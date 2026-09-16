@@ -17,19 +17,28 @@ All inputs are optional — with no arguments the skill scans recent channel his
 
 | Input | Default | Notes |
 |---|---|---|
-| `lookback` | `100 messages` | How far back to scan the channel. Accepts a message count (`200`) or a period (`7d`, `48h`). Paginate with the `cursor` from `slack_read_channel` until the window is covered. |
-| `version` | — | Force a specific version (e.g. `0.11.0-rc15`), skipping the Slack scan entirely. Use when the user names a version directly. |
+| `window_hours` | `24` | Size of the rolling time window ending **now**. Enforced with a real Unix timestamp (Step 1) — **never** with a message count. |
+| `version` | — | Force a specific version (e.g. `0.11.0-rc15`), skipping the Slack scan and the window check entirely. Only when the user names a version directly. |
 
 ---
 
-## Step 1 — Read the Slack channel
+## Step 1 — Read the Slack channel, bounded by a real timestamp
 
-Use `slack_read_channel` with:
+**Compute the window boundary first:**
+
+```bash
+python3 -c "import time; print(int(time.time()) - 24*3600)"
+```
+
+That value is `oldest_ts`. Use `window_hours` in place of `24` if the user overrode it.
+
+Then call `slack_read_channel` with:
 - `channel_id`: `C0700P68G10` (**#gosdk-pipelines-alerts**)
+- `oldest`: `{oldest_ts}` ← **required, this is what bounds the scan**
 - `limit`: `100`
 - `response_format`: `concise`
 
-Paginate with `cursor` until the `lookback` window is covered.
+⚠️ **`limit` is not a time window.** This channel carries roughly 10–20 messages a day, so `limit: 100` alone reaches back well over a week and will surface long-since-released versions. `oldest` is the only thing that actually scopes the run. Never rely on `limit` to mean "recent", and never page backwards past `oldest_ts` with `cursor`.
 
 **If the user supplied `version`, skip this step and Step 2 and go straight to Step 3 with that single version.**
 
@@ -68,6 +77,12 @@ Also ignore the `:white_check_mark:` / `:x:` / `:gear:` / `:github-pr-merged:` p
 | anything containing `-dev` | `0.12.0-dev177.59b4ab17` | ❌ Skip — mainline dev builds belong to the **Mainline Validation** tables, which this skill must never touch. Report as skipped. |
 
 Deduplicate the resulting version list, and keep it in **chronological order (oldest first)** so rows are appended in release order.
+
+### 2c — Re-check every match against the window (hard guard)
+
+Each message carries its own timestamp. **Independently verify that every matched notification falls inside the window**, and discard any that does not — even if `slack_read_channel` returned it.
+
+This is a deliberate second line of defence. The window is the whole point of the run: the page is assumed already up to date, so the job is only ever to catch **today's** releases. A version released days or weeks ago that has no row is *not* this skill's business — it was either deliberately skipped or handled some other way, and silently adding a row for it is a wrong, surprising edit. If such a version turns up, **report it and do not add it.**
 
 ---
 
@@ -161,15 +176,22 @@ Append a new `<tr>` as the **last row** of the table found in Step 5b:
 
 Do **not** add the NavSDK version in parentheses. The recent convention on this page is version-only (`**0.11.0-rc13**`, `**0.11.0-rc14**`, `**0.12.0-rc02**`), and the request is a row with just the version.
 
-Then call `updateConfluenceContent` with:
+**Prefer a granular edit over replacing the body.** This page is ~200 KB of HTML in a single line; a full-body round-trip is fragile and unwieldy. Every node carries a `data-local-id`, so target the table's `<tbody>` directly:
+
 - `cloudId`: `tomtom.atlassian.net`
 - `contentId`: `1448476996`
 - `snapshotToken`: from Step 4
-- `body`: `{ "format": "html", "value": "<the full updated page HTML>" }`
+- `edits`: `[{ "name": "appendNodeToEnd", "localId": "<the target tbody's data-local-id>", "value": "<the new <tr> HTML>" }]`
 - `minorEdit`: `true`
 - `versionMessage`: `Add row for ANA {version}` (or `Add rows for ANA {v1}, {v2}` when several)
 
-**Verify before writing:** run the same call once with `dryRun: true` and confirm the returned HTML differs from the original by exactly the intended row(s) — nothing else changed. Only then write for real.
+Fall back to a full `body` replacement (`{ "format": "html", "value": "<full page HTML>" }`) only if a granular edit is rejected.
+
+**Verify before writing:** run the same call with `dryRun: true`. It returns the resulting HTML (large — save and diff it with a script, don't eyeball it). Confirm the diff is exactly the intended row(s).
+
+Note the server normalises HTML entities on round-trip (`'` ↔ `&#39;`), so compare **entity-normalised** text (`html.unescape`) or you will see spurious differences. The real check: `normalised(original)` with the new row inserted must equal `normalised(dryRun result)` exactly.
+
+**To undo a row added in error:** `edits: [{ "name": "deleteNode", "localId": "<that row's data-local-id>" }]` removes exactly that `<tr>`. Verified working on this page.
 
 **Batch multiple versions into a single update** when more than one row is missing, rather than one write per version.
 
@@ -188,6 +210,7 @@ Then call `updateConfluenceContent` with:
 ⚠  No section for release line {release_line} — row NOT added for {version}.
    Create a "**{release_line} Releases : **" section with the standard 8-column table, then re-run.
 🚫 Skipped (mainline dev build): {version}, ...
+🕒 Outside the {window_hours}h window — NOT added: {version} (released {date}), ...
 ℹ  Ignored "ANA Public release" notifications: {version}, ...
 
 Page: https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested
@@ -200,6 +223,8 @@ Omit any line that has no entries. If nothing at all was added, say so plainly r
 ## Constraints
 
 - The Slack channel is always `C0700P68G10` (**#gosdk-pipelines-alerts**) — never ask for it.
+- **Always bound the scan with the `oldest` timestamp computed in Step 1.** `limit` is a page size, not a time window; relying on it back-searches over a week of history. The page is assumed already up to date, so only releases inside the window are in scope.
+- Never add a row for a version whose notification predates the window, even when that version genuinely has no row. Report it instead.
 - The Confluence page is always `1448476996` — never ask for it.
 - `cloudId` is always `tomtom.atlassian.net` — never ask for it.
 - Match **only** `*ANA release {version} success*`. `*ANA Public release …*` and `*UXL release …*` must never add a row.
