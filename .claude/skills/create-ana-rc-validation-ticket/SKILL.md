@@ -137,6 +137,20 @@ project = NAV AND fixVersion = "ana/{navapp_version}" ORDER BY key ASC
 
 Retrieve all fields including `summary`, `description`, `comment`, `status`, and `issuetype`. If there are more than 50 results, paginate with `startAt` until all tickets are fetched.
 
+**Supplement with GitHub diff when `prev_navapp_version` is user-overridden (skipped RCs):**
+
+If the user explicitly overrode `prev_navapp_version` to skip one or more intermediate RCs (e.g., skipping rc06 and diffing against rc05 instead), the JQL fixVersion query only captures tickets in `{navapp_version}`'s fixVersion. Tickets fixed in the skipped RCs will be missing. In this case, **also** extract ticket keys from the GitHub diff:
+
+```bash
+gh api "/repos/tomtom-internal/navapp-automotive/compare/{prev_navapp_version}...{navapp_version}" \
+  --jq '[.commits[].commit.message]' \
+  | grep -oP 'NAV-\d+' | sort -u
+```
+
+Merge the resulting NAV keys with the JQL results (deduplicate). For any ticket key from the diff that is **not** already in the JQL results, fetch it individually using `getJiraIssue` with fields `["summary", "description", "subtasks", "comment"]` and add it to the fixes table in Step 3.
+
+This supplement also applies **always** to the normal case (not just when overridden), as a completeness guard — the diff may surface tickets from sub-tasks or backports that do not appear in the fixVersion.
+
 ---
 
 ## Step 3 — Analyze each ticket for use cases (backport subtask → RAC comment fallback)
@@ -150,10 +164,11 @@ For each ticket returned in Step 2:
 1. Use `getJiraIssue` with `cloudId: tomtom.atlassian.net` and fields `["summary", "description", "subtasks", "comment"]`.
 
 2. **Primary — backport subtask lookup:**
-   - Check the `subtasks` array for a subtask whose summary contains both `Backport` (case-insensitive) AND `{release_branch_short}` (e.g. `0.10`). A summary like "Backport ... to release/0.10" or "Backport for 0.10 release" qualifies.
-   - If a matching subtask is found, fetch it using `getJiraIssue` (fields `["summary", "description"]`) and read its full description.
-   - In the subtask description, locate the **"Use cases"** section (look for a heading or label containing "Use case", "Use Cases", or "Use case to be tested"). Extract all content under that section as the use case text for the table.
-   - If the subtask exists but has no "Use cases" section, **do not leave the cell blank** — proceed to step 3 (RAC comment fallback on the original ticket) before giving up.
+   - Check the `subtasks` array for a subtask whose summary contains both `Backport` (case-insensitive) AND `{release_branch_short}` (e.g. `0.10`), OR a subtask summary matching the generic pattern `Fix on a hardened branch` (with or without a trailing release number) whose own description states `Target branch: release/{release_branch_short}` or `Backport ... to release/{release_branch_short}`. Either form qualifies as a match.
+   - If a matching subtask is found, fetch it using `getJiraIssue` (fields `["summary", "description"]`) and read its full description. Record its ticket key as `backported_ticket_key` for this row.
+   - In the subtask description, locate the **"Use cases"** section (look for a heading or label containing "Use case", "Use Cases", or "Use case to be tested", including "Use cases requiring special attention by the test team"). Extract all content under that section as the use case text for the table.
+   - If the subtask exists but has no "Use cases" section, **do not leave the cell blank** — proceed to step 3 (RAC comment fallback on the original ticket) before giving up. Still keep `backported_ticket_key` set.
+   - If no matching subtask is found, `backported_ticket_key` is blank for this row.
 
 3. **Fallback — RAC comment lookup (if no matching subtask was found, OR if a subtask was found but had no "Use cases" section):**
    - Read **every comment in full** on the original ticket — do not truncate. If the result is saved to a file, read the entire file before drawing conclusions.
@@ -163,11 +178,27 @@ For each ticket returned in Step 2:
 
 4. Note any blocking issues, known failures, or special comments in the **Comments** column.
 
-Build the NavApp fixes table:
+5. **Derive Involved Components (backport subtask → RAC comment fallback):**
+   - Using the same source resolved in steps 2–3 above — the backport subtask's description if a matching subtask was found, otherwise the RAC comment on the original ticket — locate a section labeled **"Involved Component(s)"**, **"Component(s) affected"**, or **"Affected component(s)"** (heading or label, case-insensitive).
+   - Extract the component names listed under that section as a comma-separated list for the table (e.g. `Search, Routing`).
+   - If a matching subtask was found but has no such section, fall back to checking the RAC comment on the original ticket for the same section, the same way the "Use cases" fallback works in step 3.
+   - If neither source has this section, leave the cell **blank** — do not infer components from the ticket's standard Jira `components` field, the summary, or the description body.
 
-| Ticket | Summary | Use case to be tested | Comments |
-|---|---|---|---|
-| NAV-XXXXX | Short summary of the fix | Use case from RAC comment | Any blockers or notes |
+### 3a — Fold backport-subtask rows into their parent row (dedup pass)
+
+Backport subtasks (e.g. "Fix on a hardened branch", "Fix on a hardened branch 0.10") are frequently tagged with the **same fixVersion** as their parent ticket, so they often appear as their own independent entries in the Step 2 ticket list even though Step 3 already surfaced them as `backported_ticket_key` on their parent's row.
+
+After Step 3 has been run for every ticket in the list:
+
+- Build the set of all `backported_ticket_key` values recorded across all rows.
+- Remove any row from the table whose **own ticket key** matches a value in that set — it is represented via the parent row's **Backported ticket** column instead of getting its own row.
+- Do not remove a row if its ticket key is not referenced as anyone's `backported_ticket_key` (e.g. a hardening subtask whose parent ticket happens not to be in this RC's fixVersion list) — keep it as its own row in that case, with its own use case/comments as normal.
+
+Build the NavApp fixes table. The Ticket column must always be a markdown link to the Jira issue (`[NAV-XXXXX](https://tomtom.atlassian.net/browse/NAV-XXXXX)`), never a bare ticket key. The Backported ticket column is also a markdown link (or blank if `backported_ticket_key` is empty):
+
+| Ticket | Backported ticket | Summary | Use case to be tested | Involved Components | Comments |
+|---|---|---|---|---|---|
+| [NAV-XXXXX](https://tomtom.atlassian.net/browse/NAV-XXXXX) | [NAV-YYYYY](https://tomtom.atlassian.net/browse/NAV-YYYYY) | Short summary of the fix | Use case from RAC comment or backport subtask | Search, Routing | Any blockers or notes |
 
 ---
 
@@ -255,12 +286,14 @@ Known issues : [Known issues dashboard]({known_issues_url})
 
 **Description (markdown) — first RC case (`is_first_rc = true`):**
 
+All URLs must be written as markdown hyperlinks using `[label](url)` syntax — never as bare URLs, same as the normal case (APK filename as label).
+
 ```
 The testing should be performed from the RC Branch:
-    1    ANA reference app : {gosdk_url}
+    1    ANA reference app : [app-gosdk-{navapp_version}.apk]({gosdk_url})
     2    NavSDK : {navsdk_version}
-    3    ANA app : {ana_url}
-    4    VilTestApp : {viltestapp_url}
+    3    ANA app : [app-ana-{navapp_version}.apk]({ana_url})
+    4    VilTestApp : [vilTestApp-{navapp_version}.apk]({viltestapp_url})
 
 Testing scope:
     1    Regression Test
@@ -280,6 +313,34 @@ Known issues : [Known issues dashboard]({known_issues_url})
 ```
 
 After creating the Epic, output the created ticket URL to the user.
+
+---
+
+## Step 5a — Post sanity checklist comment
+
+Immediately after creating the Epic, post a fixed sanity checklist as a comment using `addCommentToJiraIssue` with `cloudId: tomtom.atlassian.net`, `issueIdOrKey: {epic_key}`, `contentFormat: markdown`, and this exact body:
+
+```
+Sanity checklist:
+- [ ] Map Marker (Fav, Recents)
+- [ ] Current Street
+- [ ] Report Camera
+- [ ] Feedback
+- [ ] Driving View (Default North-Up)
+- [ ] Satellite View
+- [ ] Sounds
+- [ ] 3D Buildings (Default shown, Enable/Disable)
+- [ ] Traffic Flow (Enable/Disable)
+- [ ] Find CS
+- [ ] Speed Limit Badge
+- [ ] Weather Forecast (Default)
+- [ ] Day/Night Theme
+- [ ] Cluster/HUD/MiniApp
+- [ ] Route Planning
+- [ ] Pan/Zoom/Recenter/Compass
+```
+
+This checklist is fixed and always the same regardless of `navapp_version`, `is_first_rc`, or `is_final_release` — do not customize or omit items. Post it on every Epic this skill creates.
 
 ---
 
@@ -308,3 +369,4 @@ Where `{epic_url}` is the URL of the Jira Epic created in Step 5.
 - The `Products` field is always `Automotive UI on NavSDK` (id: `22304`) — never use `ANA`.
 - The `Parent` field is always `NAV-202198` — always set this on every Epic created by this skill.
 - If `navsdk_version` is a final release (no `-rcXX` suffix), `prev_navsdk_version` must be resolved by finding the last RC of that release series (see Step 1c). Never ask the user for it unless the GOSDK JQL search returns no results.
+- The sanity checklist (Step 5a) is a fixed comment posted on every Epic right after creation — never in the Epic description, and never customized per version.

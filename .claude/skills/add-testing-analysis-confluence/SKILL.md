@@ -1,6 +1,6 @@
 # Add Testing Analysis in Confluence
 
-This skill reads all comments on a Jira Epic, generates a short testing analysis note based on severity and priority, and updates the **Comments** column of the matching row in the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
+This skill reads all comments on a Jira Epic, generates a short testing analysis note based on severity, and updates the **Comments** column of the matching row in the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
 
 ## Prerequisites
 
@@ -44,6 +44,8 @@ Scan all comments for the following signals:
 
 From the `issuelinks` field, extract every linked issue key (both inward and outward links). Also extract any `subtasks` keys. Build a list: **tickets_in_links**.
 
+**Completeness check:** After building the list, count the total number of `issuelinks` entries returned and verify it matches the number of links visible on the Jira issue page. If the response appears truncated (e.g. only 1–2 links returned for an issue known to have more), re-fetch before proceeding. Always include all **"while testing discovered"** links — these are the bugs found during testing and must not be missed.
+
 ### 2c — Cross-check and flag discrepancies
 
 Compare **tickets_in_comments** against **tickets_in_links**:
@@ -52,13 +54,23 @@ Compare **tickets_in_comments** against **tickets_in_links**:
 - **In linked items but NOT mentioned in comments** — these are formally linked but never discussed in QA comments. Flag them as: `ℹ Linked but not mentioned in comments: NAV-XXXXX`
 - **In both** — confirmed referenced issues. Use these as the basis for the narrative.
 
-### 2d — Generate the narrative
+### 2d — Resolve missing severity by fetching tickets directly
+
+For any ticket in **tickets_in_comments** or **tickets_in_links** that has no explicit severity label stated in the comments, fetch that ticket directly using `getJiraIssue` with fields `["summary", "customfield_10140"]` (the **Severity** custom field: Critical (A) / Major (B) / Minor (C) / Safety / Blocks Feature Rollout) and use its value as that ticket's severity.
+
+**Do not use the Jira `priority` field as a fallback** — `priority` (Blocker/Urgent/High/Medium/Low) is a different field from `customfield_10140` (Severity) and must never substitute for it, whether the value appears in a comment or directly on the ticket. Only `customfield_10140` counts as an authoritative severity source.
+
+If `customfield_10140` is also empty/unset on the ticket itself, only then list it under "Also found" with no severity classification.
+
+### 2e — Generate the narrative
 
 Based on the cross-checked data, generate a **short narrative (2–4 sentences)** summarizing:
 1. The overall severity level (e.g. "Testing completed with no critical issues" vs "1 Critical blocker found")
-2. Specific issue counts by severity mentioned in comments (Critical / Major / Minor)
+2. Specific issue counts by **severity** (Critical / Blocker / Major / Minor), sourced from comments first and `customfield_10140` as fallback per Step 2d — **do not use Jira priority field (High/Medium/Low)**
 3. Any open blockers, customer-facing risks, or items requiring follow-up
 4. Overall test health verdict (low risk / medium risk / high risk / in-progress)
+
+**Severity source rule:** Use severity labels explicitly stated in QA comments first (e.g. "Major (B)", "Critical", "Minor"). If none is stated, use the ticket's own `customfield_10140` value fetched in Step 2d. If a linked ticket has neither, list it without a severity classification. Never infer severity from the Jira priority field, in comments or on the ticket.
 
 **Style rules:**
 - Be factual and concise — draw only from what is in the comments and linked items, do not infer
@@ -115,6 +127,8 @@ Row matched: {release_version} in the ANA Versions Tested table
 - The count number MUST match the number of ticket keys listed — always verify before outputting
 - Include ticket keys as markdown hyperlinks next to each count (e.g. `2 Critical/Blocker: [NAV-199938](https://tomtom.atlassian.net/browse/NAV-199938), [NAV-202308](https://tomtom.atlassian.net/browse/NAV-202308)`)
 - Omit a severity level entirely if count is zero
+- **Use severity labels from QA comments first, falling back to the ticket's own `customfield_10140` (Severity) field per Step 2d** — never use Jira priority (High/Medium/Low) as a substitute for severity, in comments or on the ticket
+- If a ticket has no severity label in comments AND no value in `customfield_10140`, list it at the end without any label, e.g. `Also found: NAV-XXXXX, NAV-YYYYY`
 - Do NOT add notes, explanations, or recommendations — counts and keys only
 - If no issues were found, write: `No issues reported`
 
