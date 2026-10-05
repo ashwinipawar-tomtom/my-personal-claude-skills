@@ -86,7 +86,16 @@ Reproduce the round's own counts and keys, grouped by severity, in the order Cri
 
 **Use the counts as the round stated them**, even where they disagree with the number of keys listed (0.11.0-rc01 says "4 Critical" against 6 keys, one struck through; 0.11.0-rc02 says "1 Major" against 2). The page is the authoritative per-round record — do not silently recount.
 
-Pre-existing issues re-observed on a build go on their own line, not into the new-issue counts.
+Pre-existing issues re-observed on a build go on their own line, **not into the new-issue counts**.
+
+**Split the cell before counting anything.** Several rounds append a clause like `Already reported, still present in rc05 — 1 Major: NAV-206998` or `Already reported, observed on this build — 1 Major: … | 1 Minor: …`. A regex that sums every `N Major` in the cell silently inflates the round — verified on 0.12.0-rc05 (reported 7 Major instead of 6) and 0.11.0-rc16 (3 Major, 3 Minor instead of 2 and 2).
+
+Split on `(?i)already reported`, count severities in the **first** part only, and summarise the second as a separate `+ N pre-existing` rather than merging it:
+
+```python
+parts = re.split(r'(?i)already reported', comments, maxsplit=1)
+fresh, prior = parts[0], (parts[1] if len(parts) > 1 else '')
+```
 
 ---
 
@@ -94,11 +103,27 @@ Pre-existing issues re-observed on a build go on their own line, not into the ne
 
 Only needed for the pulse table. For each release in the pulse, find its `*ANA release {version} success*` notification.
 
-Use `slack_search_public` rather than paging channel history:
+**Read the channel directly — do not use `slack_search_public`.** Verified broken on 2026-10-05: given `filters: {in: "<#C0700P68G10>", after: "2026-09-24"}` it ignored both the channel and the date and returned messages from **#ana-release-notification in 2025**. It also found nothing for a version that is definitely in the channel.
 
-- `keywords`: `["\"ANA release\"", "success"]`
-- `filters`: `in:<#C0700P68G10> after:{YYYY-MM-DD}`
-- `include_bots: true`, `sort: timestamp`, `sort_dir: asc`, `limit: 20`
+Use `slack_read_channel`, bounded by real timestamps:
+
+- `channel_id`: `C0700P68G10`
+- `oldest` / `latest`: Unix timestamps spanning the window you need
+- `limit`: `100`, `response_format`: `concise` (the rendered time is in each line; `detailed` is only needed when you want the raw `ts`)
+
+Compute the bounds rather than guessing:
+
+```bash
+python3 -c "
+import datetime, zoneinfo
+tz = zoneinfo.ZoneInfo('Europe/Amsterdam')
+for d in ['2026-09-26','2026-10-06']:
+    y,m,dd = map(int, d.split('-'))
+    print(d, int(datetime.datetime(y,m,dd,tzinfo=tz).timestamp()))
+"
+```
+
+Releases older than the first window need a second read further back — the pulse usually spans two to three weeks, and the channel goes quiet at weekends, so a single 10-day window often does not reach the oldest pulse row.
 
 Convert each `ts` to **Europe/Amsterdam** — never raw UTC:
 
@@ -200,13 +225,9 @@ Set `contentWidth: wide` — six columns of links need the room.
 
 ## Running it on a schedule
 
-Scheduled as the cloud routine **ANA Release Validation Board refresh** (`trig_01BNdiCHi2bohfNdFFa4Err8`), weekly on **Monday 06:00 UTC** — 08:00 Amsterdam in summer, 07:00 in winter. Model `claude-opus-5`; Atlassian + Slack connectors; `sources: []`.
+Scheduled as the cloud routine **ANA Release Validation Board refresh** (`trig_01BNdiCHi2bohfNdFFa4Err8`), weekly on **Monday 06:00 UTC** — 08:00 Amsterdam in summer, 07:00 in winter. Model `claude-opus-5`; Atlassian + Slack connectors.
 
-⚠️ **The routine does not read this file.** The cloud session has no checkout of this repo, so the whole procedure above is **inlined as the routine's prompt**. Editing this SKILL.md changes the local `/refresh-ana-validation-board` command but **not** the scheduled run.
-
-**After any change here, re-sync the routine** — update its prompt via the `schedule` skill, or at https://claude.ai/code/routines/trig_01BNdiCHi2bohfNdFFa4Err8
-
-This goes away once the Claude GitHub App is installed on the `ashwinipawar-tomtom` personal account (it is currently installed only on the `tomtom-internal` org, which is why the repo cannot be cloned). With the repo available, the routine's prompt becomes a one-liner that invokes this skill, and the copy is no longer needed.
+The routine checks this repository out as its session source and **reads this file**, so editing it changes the scheduled run as well as the local `/refresh-ana-validation-board` command. (It previously carried an inlined copy of the procedure, because the Claude GitHub App was installed only on the `tomtom-internal` org; it is now installed on the `ashwinipawar-tomtom` account too, so the clone works and the copy is gone.)
 
 ---
 
@@ -220,6 +241,8 @@ This goes away once the Claude GitHub App is installed on the `ashwinipawar-tomt
 - Reproduce each round's **stated** counts even when they disagree with the keys listed; never silently recount.
 - Severity comes from the round's record; the ticket's current `customfield_10140` is only used for the open-criticals check and the drift note. Never use Jira **Priority** as severity.
 - Build times come **only** from the `*ANA release … success*` Slack notification, rendered in Europe/Amsterdam. Never substitute a GitHub tag or pipeline-success time.
+- Get those notifications with a timestamp-bounded `slack_read_channel`. **Never `slack_search_public`** — it ignores the `in:` and `after:` filters and returns the wrong channel and year (Step 4).
+- Split each Comments cell on `already reported` before counting severities; pre-existing issues are reported separately and never added to the round's new-issue counts (Step 3a).
 - Full-body replacement is correct for this page and only this page.
 - Always `dryRun` before writing, and pass the `snapshotToken` from the same read; on conflict re-read and retry once rather than forcing.
 - Report stale Epic statuses and severity drift — never "fix" them in Jira from this skill.

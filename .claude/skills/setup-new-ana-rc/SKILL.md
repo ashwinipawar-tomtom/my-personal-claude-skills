@@ -201,6 +201,8 @@ Sections are **bold paragraphs**, not headings, with inconsistent spacing: `**0.
 
 **Target the LAST table in that section** — a section can be split across several tables (the 0.11 section is).
 
+⚠️ **Do not slice the page to the next bold paragraph and then read rows out of that slice.** A release-line table can extend *past* the point where the next bold heading appears, so rows fall outside the slice and an existing row looks absent. On 2026-10-05 this made the 0.13 table read as header-only when it already held a 0.13.0-rc01 row, and nearly produced a duplicate. Instead locate the table by its own `<table> … </table>` span and enumerate the `<tr>`s inside **that**.
+
 Release-line tables have **8 columns**:
 
 ```
@@ -253,16 +255,43 @@ Leave Go/No-Go and Comments empty. The owner columns carry **who**, not a date �
 
 ### 6e — Write it
 
-**Prefer a granular edit over a full-body replacement.** Every node carries a `data-local-id`:
+**Prefer a granular edit over a full-body replacement** — the page is ~235 KB and owned by other people, so it cannot be passed through a tool call in one piece anyway.
 
-- New row → `edits: [{ "name": "appendNodeToEnd", "localId": "<target tbody data-local-id>", "value": "<new <tr> HTML>" }]`
-- Enriching an existing row → target that row's cells, not the whole page
+**Enriching an existing row (the normal case):** `replaceNode`, once per cell, targeting the **empty paragraph's** `data-local-id` inside that `<td>` — not the row's and not the cell's:
+
+```json
+edits: [
+  { "name": "replaceNode", "localId": "<the empty <p>'s data-local-id>",
+    "value": "<p><a href=\"https://tomtom.atlassian.net/browse/NAV-XXXXXX\">NAV-XXXXXX</a></p>" }
+]
+```
+
+Verified working on 2026-10-05. Omit `data-local-id` on the replacement node — the server assigns one.
+
+⚠️ **Do not use `appendNodeToEnd` to add a row to a table on this page.** The `<tbody>` tags here carry **no** `data-local-id`, so there is no valid tbody target, and aiming it at the **table's** `data-local-id` appends the `<tr>` *after* `</table>` — an orphaned row outside any table, at the very end of the page body. Caught by the dryRun diff on 2026-10-05; it would have published malformed markup.
+
+If a version genuinely has no row and no granular operation will place one inside the tbody, **report that and stop for that version** rather than writing a malformed page. Do not fall back to a full-body replacement on a page this large that other people own.
 
 Also pass `snapshotToken` from 6a, `minorEdit: true`, and `versionMessage: Set up ANA {version} validation row`.
 
-**Always `dryRun: true` first.** It returns the resulting HTML (large — save it and diff with a script, don't eyeball). The server normalises entities on round-trip (`'` ↔ `&#39;`), so compare **entity-normalised** text (`html.unescape`). The check: normalised original with the intended change applied must equal the normalised dryRun result exactly.
+**Always `dryRun: true` first**, and verify it with a script — the result is ~245 KB, far too large to eyeball.
 
-**To undo a row added in error:** `edits: [{ "name": "deleteNode", "localId": "<that row's data-local-id>" }]`.
+**Do not use a character-level diff.** The server regenerates **every** `data-local-id` on write, so the whole body differs: on 2026-10-05 the common prefix between original and dryRun was 2,503 characters out of 235,000. Stripping the ids helps but other churn remains, and `difflib.SequenceMatcher` on strings that size does not finish in reasonable time.
+
+**Compare at row level instead.** Extract every `<tr>` from both, flatten each to its cell text, and diff the two *lists*:
+
+```python
+def rows(s):
+    s = html.unescape(s); out = []
+    for r in re.findall(r'<tr[^>]*>.*?</tr>', s, re.S):
+        cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', r, re.S)
+        out.append(' | '.join(re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', c)).strip() for c in cells))
+    return out
+```
+
+The checks: when **enriching**, the row count must be **unchanged** and exactly one row may differ, in exactly the cells intended. When **adding**, the count must go up by exactly one. Anything else means stop and re-read.
+
+**To undo a row added in error:** `edits: [{ "name": "deleteNode", "localId": "<that row's data-local-id>" }]`. (Not yet exercised on this page — `dryRun` it and check the row count drops by exactly one before writing.)
 
 **Batch all versions into a single page update** when processing several, rather than one write each.
 
@@ -327,5 +356,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Never add a second row for a version that already has one — enrich the existing row.
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.
 - Never create a release-line section that doesn't exist — report and stop for that version.
-- Always `dryRun` the Confluence update and confirm the diff before writing.
+- Always `dryRun` the Confluence update and verify it **by comparing extracted `<tr>` lists**, never a character diff — the server regenerates every `data-local-id` on write (Step 6e).
+- Enrich cells with `replaceNode` on the empty paragraph's `data-local-id`. **Never `appendNodeToEnd` against a table's id** — it orphans the row outside the table (Step 6e).
+- Find a release-line table by its own `<table> … </table>` span, never by slicing to the next bold paragraph — the table can run past it (Step 6b).
 - Always pass the `snapshotToken` from the same read; on conflict re-read and retry once rather than forcing.
