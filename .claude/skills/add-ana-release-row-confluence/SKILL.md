@@ -1,6 +1,6 @@
 # add-ana-release-row-confluence
 
-Watch the **#gosdk-pipelines-alerts** Slack channel for `ANA release … success` notifications and add a row for each newly released ANA version to the matching release-line table on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
+Watch the **#gosdk-pipelines-alerts** Slack channel for `SdkVer Release (ANA)` success notifications (and the legacy `ANA release … success` shape) and add a row for each newly released ANA version to the matching release-line table on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
 
 The new row contains **only the version** — every other column is left empty for QA to fill in later (by hand, or via `add-testing-analysis-confluence` and `create-ana-rc-validation-ticket`).
 
@@ -46,27 +46,35 @@ Then call `slack_read_channel` with:
 
 ## Step 2 — Extract released ANA versions
 
-Match **only** messages of this exact shape (the bot is `ACME Notifier`):
+Match the **`SdkVer Release (ANA)`** success notification (bot: `ACME Notifier`):
 
 ```
-*ANA release {version} success*
+:white_check_mark: *tomtom-internal/navapp-automotive {version}*: SdkVer Release (ANA) run from event workflow_dispatch successful: <run> @ {ISO time}, SHA: <sha>, BRANCH: {branch}
+*NavSDK:* {navsdk_version}
+*ANA:* </com/tomtom/automotive/app-ana/{version}|Main> · Edge: … · API docs
 ```
 
-`{version}` looks like `0.11.0-rc14`, `0.9.5`, or `0.10.2`.
+All four conditions must hold: repo is **`tomtom-internal/navapp-automotive`**, the text contains **`SdkVer Release (ANA)`**, it is the **success** variant (`:white_check_mark:` / `successful`), and the version comes from the `*tomtom-internal/navapp-automotive {version}*` prefix.
 
-### 2a — Notifications that must NOT match
+**This replaced the old `*ANA release {version} success*` format on 2 October 2026.** `0.13.0-rc01` was the first build under the new scheme — it has no `ANA release … success` message, and that is not a fault. Still accept the old shape for anything released before that date, so historical runs stay reproducible.
 
-The channel carries three similar notifications. Only the first one counts:
+The new message also carries **`*NavSDK:* {navsdk_version}`** inline. Use it as a cross-check against the version read from `gradle/gosdk-libs.versions.toml` at the tag; the toml stays authoritative, and a mismatch is worth reporting rather than silently preferring one.
+
+### 2a — Must NOT match
 
 | Notification | Action |
 |---|---|
-| `*ANA release {version} success*` | ✅ Add a row |
-| `*ANA Public release {version} success*` | ❌ **Ignore** — a promotion of an already-tested build, not a new build. Report it under "Ignored" in Step 7 so the user can act on it if they want. |
-| `*UXL release {version} success*` | ❌ Ignore silently — different product (UX Library), not tracked on this page. |
+| `… navapp-automotive {version}*: SdkVer Release (ANA) … successful` | ✅ Process |
+| `… navapp-automotive {version}*: SdkVer Release (UXL) … successful` | ❌ **Ignore.** The twin, posted ~4 seconds earlier for the same version. Matching it would double every release. |
+| `:x: … SdkVer Release (ANA) … failed` | ❌ Ignore — a failed run is not a release. |
+| `… go-sdk-android {version}*: Release pipeline run …` | ❌ Ignore silently — that is a NavSDK release, not ANA. |
+| `… Promote to Public Release` / `Promote to Public Pre-Release` | ❌ Ignore — promotion of an already-tested build. Report under "Ignored". |
+| `:gear:` / `:github-pr-merged:` intake-PR messages | ❌ Ignore entirely. |
+| *(legacy)* `*ANA release {version} success*` | ✅ Process — pre-2 Oct 2026 only. |
+| *(legacy)* `*ANA Public release {version} success*` | ❌ Ignore — promotion. Report under "Ignored". |
+| *(legacy)* `*UXL release {version} success*` | ❌ Ignore silently — different product. |
 
-`ANA Public release` contains the substring `ANA release`-adjacent wording, so match on the **full** pattern with `Public` explicitly excluded — do not use a loose `contains("ANA release")` test.
-
-Also ignore the `:white_check_mark:` / `:x:` / `:gear:` / `:github-pr-merged:` pipeline and intake-PR notifications entirely — those are `go-sdk-android` / `navapp-automotive` build events, not ANA releases.
+⚠️ **Do not use a blanket "ignore all `:white_check_mark:` pipeline notifications" rule.** That was correct for the old format and is now wrong — the notification this skill depends on *is* a `:white_check_mark:` pipeline message. Discriminate on repo + `SdkVer Release (ANA)` + success, as above.
 
 ### 2b — Version shapes this skill handles
 
@@ -227,7 +235,8 @@ Omit any line that has no entries. If nothing at all was added, say so plainly r
 - Never add a row for a version whose notification predates the window, even when that version genuinely has no row. Report it instead.
 - The Confluence page is always `1448476996` — never ask for it.
 - `cloudId` is always `tomtom.atlassian.net` — never ask for it.
-- Match **only** `*ANA release {version} success*`. `*ANA Public release …*` and `*UXL release …*` must never add a row.
+- Match the `SdkVer Release (ANA)` success notification on `tomtom-internal/navapp-automotive`; accept the legacy `*ANA release {version} success*` only for builds before 2 Oct 2026.
+- **Never match the `SdkVer Release (UXL)` twin** — same version, ~4 s earlier — nor a `:x:` failed run, a `go-sdk-android` release, or a `Promote to Public …` run. Do not blanket-ignore `:white_check_mark:` pipeline messages.
 - New rows carry **the version only**; all other columns stay empty. Never fill in Ticket, Configuration, Go/No-Go or Comments — other skills and the user own those.
 - Never modify an existing row, and never add a second row for a version that already has one.
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.

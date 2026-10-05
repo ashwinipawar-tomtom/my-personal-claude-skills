@@ -101,7 +101,16 @@ fresh, prior = parts[0], (parts[1] if len(parts) > 1 else '')
 
 ## Step 4 — Build times from Slack
 
-Only needed for the pulse table. For each release in the pulse, find its `*ANA release {version} success*` notification.
+Only needed for the pulse table. For each release in the pulse, find its release notification.
+
+**Two formats, split at 2 October 2026:**
+
+| Released | Notification to match |
+|---|---|
+| from 2 Oct 2026 | `:white_check_mark: *tomtom-internal/navapp-automotive {version}*: SdkVer Release (ANA) … successful` |
+| before 2 Oct 2026 | `*ANA release {version} success*` (legacy) |
+
+Match on repo `tomtom-internal/navapp-automotive` **plus** `SdkVer Release (ANA)` **plus** success. **Never** the `SdkVer Release (UXL)` twin (same version, ~4 s earlier), a `:x:` failed run, a `go-sdk-android` release, or a `Promote to Public …` run.
 
 **Read the channel directly — do not use `slack_search_public`.** Verified broken on 2026-10-05: given `filters: {in: "<#C0700P68G10>", after: "2026-09-24"}` it ignored both the channel and the date and returned messages from **#ana-release-notification in 2025**. It also found nothing for a version that is definitely in the channel.
 
@@ -135,7 +144,9 @@ print(dt.strftime('%d %b %Y, %-I:%M %p'))
 " {ts}
 ```
 
-If a release has **no** `ANA release … success` notification, write `—` and say so in the caveats. Do **not** substitute the GitHub tag time or the pipeline `SdkVer Release (ANA)` success time — those are different events, running 2–5 hours earlier, and mixing them makes the column incomparable.
+If a release has **neither** notification, write `—` and say so in the caveats. Do **not** substitute the GitHub tag or release-publication time — that is a different event again, and mixing it in makes the column meaningless.
+
+⚠️ **The column is not comparable across 2 October 2026.** The legacy event fired 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so times from the new notification sit earlier in the day than historical rows for the same stage. Note it in the caveats; never retro-fill or "correct" an older row.
 
 ---
 
@@ -240,7 +251,7 @@ The routine checks this repository out as its session source and **reads this fi
 - Bug counts come from the **ANA Versions Tested Comments column**, never from a reporter-scoped JQL — the page records all projects and all reporters, which a NAV-only query misses.
 - Reproduce each round's **stated** counts even when they disagree with the keys listed; never silently recount.
 - Severity comes from the round's record; the ticket's current `customfield_10140` is only used for the open-criticals check and the drift note. Never use Jira **Priority** as severity.
-- Build times come **only** from the `*ANA release … success*` Slack notification, rendered in Europe/Amsterdam. Never substitute a GitHub tag or pipeline-success time.
+- Build times come **only** from the release notification — `SdkVer Release (ANA)` from 2 Oct 2026, the legacy `*ANA release … success*` before it — rendered in Europe/Amsterdam. Never substitute a GitHub tag or release-publication time, and never the `SdkVer Release (UXL)` twin.
 - Get those notifications with a timestamp-bounded `slack_read_channel`. **Never `slack_search_public`** — it ignores the `in:` and `after:` filters and returns the wrong channel and year (Step 4).
 - Split each Comments cell on `already reported` before counting severities; pre-existing issues are reported separately and never added to the round's new-issue counts (Step 3a).
 - Full-body replacement is correct for this page and only this page.

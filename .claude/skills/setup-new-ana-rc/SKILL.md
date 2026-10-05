@@ -51,21 +51,35 @@ If `version` was supplied, skip Steps 1–2 and go to Step 3 with that single ve
 
 ## Step 2 — Extract released ANA versions and their build times
 
-Match **only** this exact shape (bot: `ACME Notifier`):
+Match the **`SdkVer Release (ANA)`** success notification (bot: `ACME Notifier`):
 
 ```
-*ANA release {version} success*
+:white_check_mark: *tomtom-internal/navapp-automotive {version}*: SdkVer Release (ANA) run from event workflow_dispatch successful: <run> @ {ISO time}, SHA: <sha>, BRANCH: {branch}
+*NavSDK:* {navsdk_version}
+*ANA:* </com/tomtom/automotive/app-ana/{version}|Main> · Edge: … · API docs
 ```
+
+All four conditions must hold: repo is **`tomtom-internal/navapp-automotive`**, the text contains **`SdkVer Release (ANA)`**, it is the **success** variant (`:white_check_mark:` / `successful`), and the version comes from the `*tomtom-internal/navapp-automotive {version}*` prefix.
+
+**This replaced the old `*ANA release {version} success*` format on 2 October 2026.** `0.13.0-rc01` was the first build under the new scheme — it has no `ANA release … success` message, and that is not a fault. Still accept the old shape for anything released before that date, so historical runs stay reproducible.
+
+The new message also carries **`*NavSDK:* {navsdk_version}`** inline. Use it as a cross-check against the version read from `gradle/gosdk-libs.versions.toml` at the tag; the toml stays authoritative, and a mismatch is worth reporting rather than silently preferring one.
 
 ### 2a — Must NOT match
 
 | Notification | Action |
 |---|---|
-| `*ANA release {version} success*` | ✅ Process |
-| `*ANA Public release {version} success*` | ❌ Ignore — promotion of an already-tested build. Report under "Ignored". |
-| `*UXL release {version} success*` | ❌ Ignore silently — different product. |
+| `… navapp-automotive {version}*: SdkVer Release (ANA) … successful` | ✅ Process |
+| `… navapp-automotive {version}*: SdkVer Release (UXL) … successful` | ❌ **Ignore.** The twin, posted ~4 seconds earlier for the same version. Matching it would double every release. |
+| `:x: … SdkVer Release (ANA) … failed` | ❌ Ignore — a failed run is not a release. |
+| `… go-sdk-android {version}*: Release pipeline run …` | ❌ Ignore silently — that is a NavSDK release, not ANA. |
+| `… Promote to Public Release` / `Promote to Public Pre-Release` | ❌ Ignore — promotion of an already-tested build. Report under "Ignored". |
+| `:gear:` / `:github-pr-merged:` intake-PR messages | ❌ Ignore entirely. |
+| *(legacy)* `*ANA release {version} success*` | ✅ Process — pre-2 Oct 2026 only. |
+| *(legacy)* `*ANA Public release {version} success*` | ❌ Ignore — promotion. Report under "Ignored". |
+| *(legacy)* `*UXL release {version} success*` | ❌ Ignore silently — different product. |
 
-Match the **full** pattern with `Public` explicitly excluded — never a loose `contains("ANA release")`. Ignore the `:white_check_mark:` / `:x:` / `:gear:` / `:github-pr-merged:` pipeline notifications entirely.
+⚠️ **Do not use a blanket "ignore all `:white_check_mark:` pipeline notifications" rule.** That was correct for the old format and is now wrong — the notification this skill depends on *is* a `:white_check_mark:` pipeline message. Discriminate on repo + `SdkVer Release (ANA)` + success, as above.
 
 ### 2b — Version shapes
 
@@ -91,6 +105,10 @@ print(dt.strftime('%d %b %-I:%M %p'))
 Gives e.g. `30 Sep 6:33 PM`. That string is `build_datetime`.
 
 Always render it in **Europe/Amsterdam** — the page and the team work in that timezone, and a raw UTC time would be an hour or two off and silently wrong.
+
+Use the **Slack message `ts`**, not the `@ {ISO time}` embedded in the message text. They differ by only a few seconds, but `ts` is what every existing row was built from.
+
+⚠️ **Build times are not comparable across 2 October 2026.** The old `ANA release … success` event fired 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so times recorded from the new notification are earlier in the day than historical rows for the same point in the process. Never retro-fill or "correct" an older row to match.
 
 ### 2d — Re-check every match against the window (hard guard)
 
@@ -345,7 +363,9 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Never process a version whose notification predates the window, even if it has no Epic. Report it instead.
 - Use `response_format: detailed` on the Slack read — the message `ts` is the build time and `concise` omits it.
 - Render `build_datetime` in **Europe/Amsterdam**, never raw UTC.
-- Match only `*ANA release {version} success*`. `*ANA Public release …*` and `*UXL release …*` never trigger setup.
+- Match the `SdkVer Release (ANA)` success notification on `tomtom-internal/navapp-automotive` (Step 2); accept the legacy `*ANA release {version} success*` only for builds before 2 Oct 2026.
+- **Never match the `SdkVer Release (UXL)` twin** — same version, ~4 s earlier — nor a `:x:` failed run, a `go-sdk-android` release, or a `Promote to Public …` run.
+- Do not blanket-ignore `:white_check_mark:` pipeline messages; the notification this skill needs is one.
 - Skip any version containing `-dev`.
 - **Never create a Drive test work item** (Step 5b) — it is a shared, multi-RC task owned by the Drive Test team.
 - **No child work items for an rc01** (Step 5-pre) — rc01 is a full regression split into area tests planned by hand, not the desk/APAC sanity pair.
