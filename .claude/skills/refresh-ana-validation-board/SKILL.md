@@ -116,7 +116,30 @@ If a release has **no** `ANA release … success` notification, write `—` and 
 
 ## Step 5 — Open-criticals check
 
-Collect every bug key the board records as Critical. Query their current status:
+### 5a — Collecting the Critical keys
+
+Rounds do not phrase this consistently. A regex expecting only `N Critical: …` **will miss real criticals** — verified on 0.11.0-rc04. Handle all of these:
+
+| Phrasing seen | Example |
+|---|---|
+| `N Critical:` | `1 Critical: NAV-203186` |
+| `N Critical :` (space before colon) | `2 Critical : GOSDK-214776, NAV-202312` |
+| lower case | `1 critical : NAV-206307` |
+| with the severity letter | `1 Critical (A): NAV-209428` |
+| **key first, label in parentheses** | `NAV-205381 (Critical issues exists on this build)` |
+
+Use **two passes** over each Comments cell:
+
+1. **Labelled groups** — `(?i)(\d+)\s*critical[^:]{0,12}:\s*(.*?)(?=\d+\s*(?:major|minor)\b|$)`, then take every ticket key out of the captured group.
+2. **Inline mentions** — any ticket key within ~80 characters *before* a parenthesised or trailing occurrence of `critical`, e.g. `(?i)((?:NAV|GOSDK|NGSD|NDSIMP|SEARCHPU|IM|ONEAPP)-\d+)[^|\n]{0,80}?\(\s*critical`.
+
+Union both passes and de-duplicate. Keys struck through on the source page (`~~KEY~~`) still count — the round recorded them.
+
+**Sanity-check the result:** the count of Critical keys found should be at least the sum of the `N` values in the labelled groups. If it is lower, a phrasing variant was missed — report it rather than publishing a silently short list.
+
+### 5b — Query their current status
+
+Query the collected keys:
 
 ```
 key in ({critical keys}) ORDER BY key ASC
