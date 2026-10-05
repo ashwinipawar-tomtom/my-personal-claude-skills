@@ -3,7 +3,7 @@
 End-to-end setup for a **newly released ANA RC**. Detects new releases from Slack, then for each one:
 
 1. Creates the RC validation **Epic** (by invoking `create-ana-rc-validation-ticket`)
-2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity
+2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests)
 3. Adds (or enriches) the version's row on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page, including the **build date/time** and the **owner tag** in each testing column
 
 Designed to run **unattended on a schedule**. Every step is idempotent, so a repeat run on an already-processed version changes nothing.
@@ -129,7 +129,19 @@ Record from its output:
 
 ---
 
-## Step 5 — Create the 2 child work items
+## Step 5 — Create the child work items (none for rc01)
+
+### 5-pre — Skip children entirely for rc01
+
+**If `version` ends with `rc01`, create no child work items at all.** Go straight to Step 6.
+
+An rc01 is validated as a **full regression** spread across named area tests (Route planning, Map Experience, DX UI, Search, E2E) rather than the single desk/APAC sanity pair — the testing scope on an rc01 Epic reads `Regression Test`, not `Sanity test`. Who owns which area is decided per release by the team, so the split cannot be derived here. Creating the two sanity tickets anyway produces work items nobody uses, sitting alongside the real area tests.
+
+Report rc01 as `Epic created, no children (rc01 — area tests are planned by hand)`.
+
+This applies to any version the Epic treats as a first RC, including one forced with `treat_as_first_rc = yes`.
+
+### 5a — The two children (rc02 and later)
 
 Create these under the Epic with `createJiraIssue`, `parent: {epic_key}`:
 
@@ -145,13 +157,13 @@ Also set on both:
 
 Leave description, priority and dates empty — the assignee owns those.
 
-### 5a — Never create a Drive test ticket
+### 5b — Never create a Drive test ticket
 
 **Do not create a Drive test work item.** Drive testing is tracked on its own long-running task that spans several RCs (e.g. `ANA 0.12.0-rc04/05 Drive test`), owned and maintained by the Drive Test team. Creating a per-RC Drive test ticket would duplicate it.
 
 If an existing Drive test task is already parented to this Epic, leave it alone.
 
-### 5b — Idempotency
+### 5c — Idempotency
 
 Before creating, list existing children:
 
@@ -161,7 +173,7 @@ parent = {epic_key}
 
 Skip any child whose summary already matches the target summary. Never create a second copy. If both already exist, report "children already present" and continue to Step 6.
 
-### 5c — If `Test Execution` is rejected
+### 5d — If `Test Execution` is rejected
 
 `Test Execution` (id `10007`) is an Xray type and may require extra fields in some projects. If the create is rejected, **report the exact error and the allowed values from the response, and stop for this version's children** — do not silently fall back to `Task`, because the type is what puts these on the test-execution board.
 
@@ -268,6 +280,7 @@ Also pass `snapshotToken` from 6a, `minorEdit: true`, and `versionMessage: Set u
                Build : {build_datetime}  (from the Slack release notification)
 
 ⏭  Already set up (no change): {version} — Epic {key}, children present, row present
+ℹ  rc01 — no children created (area tests are planned by hand): {version}
 ⚠  Cells left untouched because they were already filled: {column}, ... for {version}
 ⚠  No section for release line {release_line} — nothing written for {version}
 🚫 Skipped (mainline dev build): {version}, ...
@@ -290,7 +303,7 @@ It runs with **`window_hours=7`**, not 6. Keep `window_hours` at least as large 
 
 **No authenticated `gh` CLI in the cloud sandbox.** `create-ana-rc-validation-ticket` shells out to `gh api` for the NavSDK version and the compare diffs; the routine's prompt redirects those to the GitHub MCP connector (`get_file_contents`, `list_tags`, `list_commits`) against `tomtom-internal`. If that mapping changes, update the routine prompt at https://claude.ai/code/routines/trig_013vPDdkVW5DxQQJwMJZaxYJ
 
-Because this skill creates Jira issues and edits a shared Confluence page, a scheduled run has real side effects. The idempotency guards (Steps 3, 5b, 6c) are what make that safe — do not weaken them.
+Because this skill creates Jira issues and edits a shared Confluence page, a scheduled run has real side effects. The idempotency guards (Steps 3, 5c, 6c) are what make that safe — do not weaken them.
 
 ---
 
@@ -305,8 +318,9 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Render `build_datetime` in **Europe/Amsterdam**, never raw UTC.
 - Match only `*ANA release {version} success*`. `*ANA Public release …*` and `*UXL release …*` never trigger setup.
 - Skip any version containing `-dev`.
-- **Never create a Drive test work item** (Step 5a) — it is a shared, multi-RC task owned by the Drive Test team.
-- Exactly 2 children, both `Test Execution`, assigned as in Step 5. Never substitute a different issue type if `Test Execution` is rejected — report instead.
+- **Never create a Drive test work item** (Step 5b) — it is a shared, multi-RC task owned by the Drive Test team.
+- **No child work items for an rc01** (Step 5-pre) — rc01 is a full regression split into area tests planned by hand, not the desk/APAC sanity pair.
+- For rc02 and later: exactly 2 children, both `Test Execution`, assigned as in Step 5a. Never substitute a different issue type if `Test Execution` is rejected — report instead.
 - Delegate Epic creation entirely to `create-ana-rc-validation-ticket`; never re-implement its steps.
 - If Epic creation fails, create no children and no Confluence row for that version.
 - Never overwrite a non-empty Confluence cell. Go/No-Go and Comments are always left empty by this skill.
