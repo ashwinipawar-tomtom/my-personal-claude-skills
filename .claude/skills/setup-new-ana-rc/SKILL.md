@@ -284,13 +284,11 @@ Omit lines with no entries. If nothing was created or changed, say so plainly ra
 
 ## Running it on a schedule
 
-This skill is written to run unattended. To schedule it, use the `schedule` skill with a prompt like:
+Scheduled as the cloud routine **ANA new RC setup** (`trig_013vPDdkVW5DxQQJwMJZaxYJ`), **every 6 hours** at `9 */6 * * *` UTC — 02:09, 08:09, 14:09 and 20:09 Amsterdam in summer. Model `claude-opus-5`; Atlassian + Slack + GitHub connectors; this repo checked out as the session source, so the routine reads this file rather than carrying a copy of it.
 
-```
-Run the setup-new-ana-rc skill with window_hours=6
-```
+It runs with **`window_hours=7`**, not 6. Keep `window_hours` at least as large as the interval, or a release landing between runs is missed — and a missed release is then permanently out of scope by the Step 2d guard, so it has to be run by hand with an explicit `version`. The extra hour absorbs a late or retried run; the overlap is harmless because every step is idempotent.
 
-Every 6 hours with `window_hours=6` gives continuous coverage with no gap and no overlap. Keep `window_hours` at least as large as the interval, or a release landing between runs is missed — and a missed release is then permanently out of scope by the Step 2d guard, so it has to be run by hand with an explicit `version`.
+**No authenticated `gh` CLI in the cloud sandbox.** `create-ana-rc-validation-ticket` shells out to `gh api` for the NavSDK version and the compare diffs; the routine's prompt redirects those to the GitHub MCP connector (`get_file_contents`, `list_tags`, `list_commits`) against `tomtom-internal`. If that mapping changes, update the routine prompt at https://claude.ai/code/routines/trig_013vPDdkVW5DxQQJwMJZaxYJ
 
 Because this skill creates Jira issues and edits a shared Confluence page, a scheduled run has real side effects. The idempotency guards (Steps 3, 5b, 6c) are what make that safe — do not weaken them.
 
