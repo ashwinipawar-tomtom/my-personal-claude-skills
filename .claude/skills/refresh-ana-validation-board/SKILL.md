@@ -198,6 +198,18 @@ Set `contentWidth: wide` — six columns of links need the room.
 
 ---
 
+## Running it on a schedule
+
+Scheduled as the cloud routine **ANA Release Validation Board refresh** (`trig_01BNdiCHi2bohfNdFFa4Err8`), weekly on **Monday 06:00 UTC** — 08:00 Amsterdam in summer, 07:00 in winter. Model `claude-opus-5`; Atlassian + Slack connectors; `sources: []`.
+
+⚠️ **The routine does not read this file.** The cloud session has no checkout of this repo, so the whole procedure above is **inlined as the routine's prompt**. Editing this SKILL.md changes the local `/refresh-ana-validation-board` command but **not** the scheduled run.
+
+**After any change here, re-sync the routine** — update its prompt via the `schedule` skill, or at https://claude.ai/code/routines/trig_01BNdiCHi2bohfNdFFa4Err8
+
+This goes away once the Claude GitHub App is installed on the `ashwinipawar-tomtom` personal account (it is currently installed only on the `tomtom-internal` org, which is why the repo cannot be cloned). With the repo available, the routine's prompt becomes a one-liner that invokes this skill, and the copy is no longer needed.
+
+---
+
 ## Constraints
 
 - The board page is always `2561638669`; ANA Versions Tested is always `1448476996`; `cloudId` is always `tomtom.atlassian.net`; the Slack channel is always `C0700P68G10`. Never ask for any of them.
