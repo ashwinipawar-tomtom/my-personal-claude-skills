@@ -36,7 +36,7 @@ python3 -c "import time; print(int(time.time()) - 24*3600)"
 That is `oldest_ts` (substitute `window_hours` for `24` if overridden).
 
 Call `slack_read_channel` with:
-- `channel_id`: `C0700P68G10` (**#gosdk-pipelines-alerts**)
+- `channel_id`: `C0700P68G10` (**#navigation-pipelines-alerts**)
 - `oldest`: `{oldest_ts}` ← **required; this is what bounds the scan**
 - `limit`: `100`
 - `response_format`: `detailed` ← **not `concise`** — this skill needs each message's `ts`
@@ -247,7 +247,7 @@ A version-only row may already be there — `add-ana-release-row-confluence` run
 | Found | Action |
 |---|---|
 | No row | Insert a new row (6d) |
-| Row exists, cells empty | **Enrich in place**: fill Release version, Ticket, Configuration and the three owner columns. Never add a second row. |
+| Row exists, cells empty | **Enrich in place**: fill Release version, Ticket, Configuration and the three owner columns (with the child-ticket links, 6d). Never add a second row. |
 | Row exists with a non-empty cell | **Leave that cell exactly as it is** and fill only the empty ones. Report which cells were left alone. |
 
 Never overwrite a non-empty cell — Go/No-Go and Comments in particular are owned by QA and by `add-testing-analysis-confluence`.
@@ -259,9 +259,9 @@ Never overwrite a non-empty cell — Go/No-Go and Comments in particular are own
 | Release version | `<strong>{version}</strong>({navsdk_version})Build : {build_datetime}` |
 | Ticket | link to `{epic_url}`, text `{epic_key}` |
 | Configuration | `Orbis + Daichi + Online_first` then `Ref App - Release` (copy the exact shape from the row above — it is two lines in one cell) |
-| Full Regression(Includes Drive Test) / Sanity(Exploratory) | mention **Ashwini Manohar Pawar** |
-| Drive Test ? | mention **Max Bogers** |
-| APAC Tested ? | mention **Joy Salem** |
+| Full Regression(Includes Drive Test) / Sanity(Exploratory) | mention **Ashwini Manohar Pawar**, then the desk sanity child (`Sanity Testing for ANA {version}`) as an inline smart link on its own line |
+| Drive Test ? | mention **Max Bogers** (no ticket — Drive test is not created per RC, Step 5b) |
+| APAC Tested ? | mention **Joy Salem**, then the APAC sanity child (`[APAC] Sanity Testing for ANA {version}`) as an inline smart link on its own line |
 | Go/ No-Go Recommendation | **empty** |
 | Comments | **empty** |
 
@@ -275,7 +275,44 @@ Mention accountIds:
 
 Author a mention as `<span data-type="mention" data-user-id="{accountId}">@{Display Name}</span>`. Confirm the exact node shape against the format guide from 6a before writing — if the mention node is rejected, fall back to the plain text `@{Display Name}` and say so in the report rather than failing the whole row.
 
-Leave Go/No-Go and Comments empty. The owner columns carry **who**, not a date — no planned dates are set anywhere by this skill.
+Leave Go/No-Go and Comments empty. The owner columns carry **who** and **which ticket**, not a date. This skill never sets a planned date.
+
+**Child ticket + live status (added 2026-10-06):** in the desk and APAC cells, put the child from Step 5 in a second paragraph after the mention, as an inline **Jira issue macro** with the summary hidden:
+
+```html
+<p><span data-type="mention" data-user-id="{accountId}">@{Display Name}</span></p>
+<p><span data-type="inline-extension" data-extension-key="jira" data-extension-type="com.atlassian.confluence.macro.core" data-parameters='{"macroParams":{"key":{"value":"{child_key}"},"showSummary":{"value":"false"}},"macroMetadata":{"schemaVersion":{"value":"1"},"title":"Jira Legacy"}}'></span></p>
+```
+
+It renders as the linked key plus a **status lozenge read live from the ticket** (Open → In Progress → Done), so nobody has to update the cell. This is what the user asked for. Two other forms were tried and rejected on 2026-10-06:
+- **Static `NAV-XXXXXX | Open` text:** it goes stale.
+- **An inline smart card** (`data-card-appearance="inline"`): it isn't the key | status shape the user wants.
+
+The macro shape is copied from an existing one on the ANA page *Q4 2026 UxLibrary* (2462515985). Only `key` is needed, with no `serverId`. Omit `macroId`, because Confluence generates it. Verified on page v565. Use the child keys whether this run created them or found them already present (Step 5c).
+
+**rc01, and any version without the sanity pair:** this skill creates no children for an rc01 (Step 5-pre), but the team adds area-test tickets under the Epic by hand. Link **whatever children already exist**, matched to a column by **assignee**:
+
+```
+parent = {epic_key} ORDER BY key ASC      fields: ["summary", "assignee"]
+```
+
+| Assignee accountId | Column |
+|---|---|
+| `712020:1c9e3001-3ab7-410a-b27f-56bdaef3627a` (Ashwini) | Full Regression / Sanity |
+| `70121:06132251-8fb4-4c83-b36e-ed3991d620a6` (Joy Salem) | APAC Tested ? |
+
+Rules for this matching:
+- **Placement:** each matched child gets its own Jira-macro paragraph, inserted with `insertNodeAfter` directly after that person's **mention paragraph**. Keep key order.
+- **Who gets matched:** match on assignee, never on summary text. Children assigned to anyone else are left out, and so are unassigned children. Report them so a person can place them. The Drive Test column and Max Bogers get no ticket (Step 5b).
+- **Existing cell content:** the owner cell may already hold hand-written lines (e.g. `In-progress {date}`). Leave them exactly as they are. This adds paragraphs and never replaces any.
+- **Duplicates:** skip any child whose key already appears in the cell, as a macro, a link or plain text. A re-run must not add a second copy.
+- **No children yet:** the cell holds only the mention. Report `rc01 — no child tickets under {epic_key} yet`.
+
+First done by hand on 2026-10-06 for 0.13.0-rc01 (page v569): NAV-209696 "DX UI" went to Ashwini's column and NAV-209697 "[APAC] validation" went to Joy's.
+
+⚠️ An rc01's area tickets are often filed **after** the scheduled run that set the version up. The Step 2d window guard stops later runs from revisiting it, so tickets filed later have to be linked with a manual run: `version = {rc01 version}`. That run goes through Step 3 ("Epic exists") and on to this enrichment.
+
+When **enriching** an existing row whose owner cell holds only the mention and no child link, add the link with `insertNodeAfter` on the mention paragraph's `data-local-id`. That fills a gap and is not an overwrite. If the cell already holds anything else, leave it alone (6c).
 
 ### 6e — Write it
 
@@ -336,6 +373,8 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
 
 ⏭  Already set up (no change): {version} — Epic {key}, children present, row present
 ℹ  rc01 — no children created (area tests are planned by hand): {version}
+   Linked existing children by assignee: {key} → Ashwini, {key} → Joy  (or "none under {epic_key} yet")
+⚠  Children not placed (other assignee / unassigned): {key} ({assignee}), ...
 ⚠  Cells left untouched because they were already filled: {column}, ... for {version}
 ⚠  No section for release line {release_line} — nothing written for {version}
 🚫 Skipped (mainline dev build): {version}, ...
@@ -364,7 +403,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 
 ## Constraints
 
-- The Slack channel is always `C0700P68G10` (**#gosdk-pipelines-alerts**) — never ask for it.
+- The Slack channel is always `C0700P68G10` (**#navigation-pipelines-alerts**) — never ask for it.
 - The Confluence page is always `1448476996` — never ask for it.
 - `cloudId` is always `tomtom.atlassian.net` — never ask for it.
 - **Always bound the Slack scan with the `oldest` timestamp from Step 1.** Never rely on `limit` to mean "recent".
