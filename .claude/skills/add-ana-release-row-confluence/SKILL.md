@@ -1,6 +1,6 @@
 # add-ana-release-row-confluence
 
-Watch the **#gosdk-pipelines-alerts** Slack channel for `SdkVer Release (ANA)` success notifications (and the legacy `ANA release … success` shape) and add a row for each newly released ANA version to the matching release-line table on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
+Watch the **#navigation-pipelines-alerts** Slack channel for `SdkVer Release (ANA)` success notifications (and the legacy `ANA release … success` shape) and add a row for each newly released ANA version to the matching release-line table on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page.
 
 The new row contains **only the version** — every other column is left empty for QA to fill in later (by hand, or via `add-testing-analysis-confluence` and `create-ana-rc-validation-ticket`).
 
@@ -33,7 +33,7 @@ python3 -c "import time; print(int(time.time()) - 24*3600)"
 That value is `oldest_ts`. Use `window_hours` in place of `24` if the user overrode it.
 
 Then call `slack_read_channel` with:
-- `channel_id`: `C0700P68G10` (**#gosdk-pipelines-alerts**)
+- `channel_id`: `C0700P68G10` (**#navigation-pipelines-alerts**)
 - `oldest`: `{oldest_ts}` ← **required, this is what bounds the scan**
 - `limit`: `100`
 - `response_format`: `concise`
@@ -230,7 +230,7 @@ Omit any line that has no entries. If nothing at all was added, say so plainly r
 
 ## Constraints
 
-- The Slack channel is always `C0700P68G10` (**#gosdk-pipelines-alerts**) — never ask for it.
+- The Slack channel is always `C0700P68G10` (**#navigation-pipelines-alerts**) — never ask for it.
 - **Always bound the scan with the `oldest` timestamp computed in Step 1.** `limit` is a page size, not a time window; relying on it back-searches over a week of history. The page is assumed already up to date, so only releases inside the window are in scope.
 - Never add a row for a version whose notification predates the window, even when that version genuinely has no row. Report it instead.
 - The Confluence page is always `1448476996` — never ask for it.

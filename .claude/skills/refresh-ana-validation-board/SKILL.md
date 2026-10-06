@@ -116,7 +116,7 @@ Match on repo `tomtom-internal/navapp-automotive` **plus** `SdkVer Release (ANA)
 
 Use `slack_read_channel`, bounded by real timestamps:
 
-- `channel_id`: `C0700P68G10`
+- `channel_id`: `C0700P68G10` (**#navigation-pipelines-alerts**, renamed from #gosdk-pipelines-alerts on 2026-10-06; the ID is unchanged)
 - `oldest` / `latest`: Unix timestamps spanning the window you need
 - `limit`: `100`, `response_format`: `concise` (the rendered time is in each line; `detailed` is only needed when you want the raw `ts`)
 
