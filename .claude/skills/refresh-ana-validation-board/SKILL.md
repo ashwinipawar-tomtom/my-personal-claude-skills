@@ -103,12 +103,14 @@ fresh, prior = parts[0], (parts[1] if len(parts) > 1 else '')
 
 Only needed for the pulse table. For each release in the pulse, find its release notification.
 
-**Two formats, split at 2 October 2026:**
+**Two formats, both still live. Accept either at any date:**
 
-| Released | Notification to match |
+| Posted by | Notification to match |
 |---|---|
-| from 2 Oct 2026 | `:white_check_mark: *tomtom-internal/navapp-automotive {version}*: SdkVer Release (ANA) … successful` |
-| before 2 Oct 2026 | `*ANA release {version} success*` (legacy) |
+| the newest release line (0.13.0-rc01 onward, from 2 Oct 2026) | `:white_check_mark: *tomtom-internal/navapp-automotive {version}*: SdkVer Release (ANA) … successful` |
+| older release branches, still after 2 Oct | `*ANA release {version} success*` (legacy) |
+
+Do **not** split on the date. On 6 October 2026, `0.10.3`, `0.11.1` and `0.12.0-rc06` all came as legacy messages, while `0.13.0-rc02` came as `SdkVer Release (ANA)`. A date cut-off would have left three pulse rows without a build time. If a version appears in both formats, use the earlier one.
 
 Match on repo `tomtom-internal/navapp-automotive` **plus** `SdkVer Release (ANA)` **plus** success. **Never** the `SdkVer Release (UXL)` twin (same version, ~4 s earlier), a `:x:` failed run, a `go-sdk-android` release, or a `Promote to Public …` run.
 
@@ -146,7 +148,7 @@ print(dt.strftime('%d %b %Y, %-I:%M %p'))
 
 If a release has **neither** notification, write `—` and say so in the caveats. Do **not** substitute the GitHub tag or release-publication time — that is a different event again, and mixing it in makes the column meaningless.
 
-⚠️ **The column is not comparable across 2 October 2026.** The legacy event fired 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so times from the new notification sit earlier in the day than historical rows for the same stage. Note it in the caveats; never retro-fill or "correct" an older row.
+⚠️ **The column is not comparable across the two formats.** The legacy event fires 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so a time from the new notification sits earlier in the day than a legacy one for the same stage. That holds for historical rows and for older-branch releases posted today. Note it in the caveats; never retro-fill or "correct" an older row.
 
 ---
 
@@ -210,8 +212,16 @@ Page structure, in order:
 2. Open-criticals banner (Step 5)
 3. Severity note — graded by Jira **Severity**, not Priority; counts come from each round's record on ANA Versions Tested and span all projects and all reporters
 4. A line explaining the three ANA streams (Sanity desk / APAC / Drive test)
-5. **Now in work & recently finished** — the pulse: anything not finished, plus the most recent completed rounds, newest build first. Columns: Release · NavSDK · Sanity · APAC · Drive test · Build appeared · Bugs found (summarised as counts only)
-6. **By release line** — one `h4` and table per line, newest line first, newest RC first within each. Columns: ANA release (with its Epic link) · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys)
+5. **Now in work & recently finished** — the pulse: **every round that is Open or In Progress** (the Epic is not Done, or any child is not Done), **plus the single most recently finished round** (the newest build whose Epic and children are all Done). No other finished rounds; the user asked for exactly this on 2026-10-06. Newest build first, with a one-line intro: `Every round still Open or In Progress, plus the most recently finished one.` Columns: Release · NavSDK · Sanity · APAC · Drive test · Build appeared · Bugs found (summarised as counts only).
+6. **By release line** — one `h4` and table per line, newest line first, newest RC first within each. Columns: ANA release · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys).
+
+**Release cell, in both tables:** the version in bold, then the Epic key as a visible link on its own line, so the key can be read without hovering:
+
+```html
+<p><strong>{label}</strong><br>Epic: <a href="https://tomtom.atlassian.net/browse/{epic_key}">{epic_key}</a></p>
+```
+
+A round with no Epic reads `<strong>{label}</strong><br>(no Epic)`. Don't put the link on the version text alone. The user asked for the Epic to be visible on every row.
 7. **How to use this board**
 8. **Caveats for this snapshot** — refresh date and that it is script-written; stale Epic statuses (Step 6); severity drift (Step 5); moved bug keys; any RC with no validation record at all
 
@@ -236,7 +246,7 @@ Set `contentWidth: wide` — six columns of links need the room.
 
 ## Running it on a schedule
 
-Scheduled as the cloud routine **ANA Release Validation Board refresh** (`trig_01BNdiCHi2bohfNdFFa4Err8`), weekly on **Monday 06:00 UTC** — 08:00 Amsterdam in summer, 07:00 in winter. Model `claude-opus-5`; Atlassian + Slack connectors.
+Scheduled as the cloud routine **ANA Release Validation Board refresh** (`trig_01BNdiCHi2bohfNdFFa4Err8`), **three times every weekday**: `0 7,11,15 * * 1-5` UTC. In summer (CEST) that is 09:00, 13:00 and 17:00 Amsterdam, as requested on 2026-10-06. Cron is UTC-only, so after the clock change on 25 Oct 2026 these runs land at 08:00, 12:00 and 16:00 Amsterdam. Shift the cron to `0 8,12,16 * * 1-5` for winter, and back again on 28 Mar 2027. Model `claude-opus-5`; Atlassian + Slack connectors.
 
 The routine checks this repository out as its session source and **reads this file**, so editing it changes the scheduled run as well as the local `/refresh-ana-validation-board` command. (It previously carried an inlined copy of the procedure, because the Claude GitHub App was installed only on the `tomtom-internal` org; it is now installed on the `ashwinipawar-tomtom` account too, so the clone works and the copy is gone.)
 
@@ -251,7 +261,7 @@ The routine checks this repository out as its session source and **reads this fi
 - Bug counts come from the **ANA Versions Tested Comments column**, never from a reporter-scoped JQL — the page records all projects and all reporters, which a NAV-only query misses.
 - Reproduce each round's **stated** counts even when they disagree with the keys listed; never silently recount.
 - Severity comes from the round's record; the ticket's current `customfield_10140` is only used for the open-criticals check and the drift note. Never use Jira **Priority** as severity.
-- Build times come **only** from the release notification — `SdkVer Release (ANA)` from 2 Oct 2026, the legacy `*ANA release … success*` before it — rendered in Europe/Amsterdam. Never substitute a GitHub tag or release-publication time, and never the `SdkVer Release (UXL)` twin.
+- Build times come **only** from the release notification: `SdkVer Release (ANA)` or the legacy `*ANA release … success*`, whichever the version posted, at any date (older branches still post the legacy one). Render them in Europe/Amsterdam. Never substitute a GitHub tag or release-publication time, and never the `SdkVer Release (UXL)` twin.
 - Get those notifications with a timestamp-bounded `slack_read_channel`. **Never `slack_search_public`** — it ignores the `in:` and `after:` filters and returns the wrong channel and year (Step 4).
 - Split each Comments cell on `already reported` before counting severities; pre-existing issues are reported separately and never added to the round's new-issue counts (Step 3a).
 - Full-body replacement is correct for this page and only this page.
