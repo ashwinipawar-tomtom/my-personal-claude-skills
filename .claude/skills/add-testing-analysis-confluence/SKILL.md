@@ -95,7 +95,7 @@ Use `getConfluencePage` with:
 - `contentFormat`: `html`
 
 Search the page HTML for a table row (`<tr>`) where **either**:
-- The **Ticket** column (`<td>`) contains the Epic key (e.g. `NAV-202400`), **OR**
+- The **Ticket** column (`<td>`) contains the Epic key (e.g. `NAV-202400`), as a link on older rows or as a Jira issue macro on current rows. For the macro, the key sits only in the `data-parameters` attribute (`macroParams.key.value`), with no link text. Search the cell's raw HTML, not its rendered text. **OR**
 - The **Release version** column contains the version string extracted from the Epic summary (e.g. `0.9.0-rc11`)
 
 If **multiple rows** match the same ticket key, use the **last** matching row.

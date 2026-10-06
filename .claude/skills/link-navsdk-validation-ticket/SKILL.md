@@ -42,7 +42,11 @@ Each table row's **Release version** cell has the format:
 
 e.g. `<strong>0.11.0-rc01</strong>(2.6.0-rc01)` → `navsdk_version = 2.6.0-rc01`.
 
-Find the row whose bolded version matches the given `ana_version` exactly (last matching row if duplicates). Read the adjacent **Ticket** cell for the ANA Jira key, e.g. `<a href="https://tomtom.atlassian.net/browse/NAV-203806">NAV-203806</a>` → `ana_ticket_key = NAV-203806`.
+Find the row whose bolded version matches the given `ana_version` exactly (last matching row if duplicates). Read the adjacent **Ticket** cell for the ANA Jira key. It comes in one of two shapes:
+- **Older rows:** a plain link, e.g. `<a href="https://tomtom.atlassian.net/browse/NAV-203806">NAV-203806</a>` → `ana_ticket_key = NAV-203806`.
+- **Current rows (since 2026-10-06):** a Jira issue macro with no `<a>`, i.e. `<span data-type="inline-extension" data-extension-key="jira" … data-parameters="{…&quot;key&quot;:{&quot;value&quot;:&quot;NAV-209804&quot;}…}">`. HTML-unescape `data-parameters` and read `macroParams.key.value`.
+
+Check for both. Matching only on `href` silently misses every current row.
 
 **If no row matches `ana_version`, or the matching row has no Ticket cell or no `(...)` NavSDK version:** stop and report this to the user.
 

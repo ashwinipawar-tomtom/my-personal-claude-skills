@@ -257,7 +257,7 @@ Never overwrite a non-empty cell — Go/No-Go and Comments in particular are own
 | Column | Content |
 |---|---|
 | Release version | `<strong>{version}</strong>({navsdk_version})Build : {build_datetime}` |
-| Ticket | link to `{epic_url}`, text `{epic_key}` |
+| Ticket | the Epic as an inline **Jira issue macro** (`key = {epic_key}`, `showSummary = false`), the same shape as the child tickets below, so the cell shows the key and the Epic's live status. Not a plain link. |
 | Configuration | `Orbis + Daichi + Online_first` then `Ref App - Release` (copy the exact shape from the row above — it is two lines in one cell) |
 | Full Regression(Includes Drive Test) / Sanity(Exploratory) | mention **Ashwini Manohar Pawar**, then the desk sanity child (`Sanity Testing for ANA {version}`) as an inline smart link on its own line |
 | Drive Test ? | mention **Max Bogers** (no ticket — Drive test is not created per RC, Step 5b) |
@@ -323,7 +323,7 @@ When **enriching** an existing row whose owner cell holds only the mention and n
 ```json
 edits: [
   { "name": "replaceNode", "localId": "<the empty <p>'s data-local-id>",
-    "value": "<p><a href=\"https://tomtom.atlassian.net/browse/NAV-XXXXXX\">NAV-XXXXXX</a></p>" }
+    "value": "<p><span data-type=\"inline-extension\" data-extension-key=\"jira\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters='{\"macroParams\":{\"key\":{\"value\":\"NAV-XXXXXX\"},\"showSummary\":{\"value\":\"false\"}},\"macroMetadata\":{\"schemaVersion\":{\"value\":\"1\"},\"title\":\"Jira Legacy\"}}'></span></p>" }
 ]
 ```
 
