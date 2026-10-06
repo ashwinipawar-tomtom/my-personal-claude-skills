@@ -338,6 +338,8 @@ Sanity checklist:
 - [ ] Cluster/HUD/MiniApp
 - [ ] Route Planning
 - [ ] Pan/Zoom/Recenter/Compass
+- [ ] LLN
+- [ ] Offline
 ```
 
 This checklist is fixed and always the same regardless of `navapp_version`, `is_first_rc`, or `is_final_release` — do not customize or omit items. Post it on every Epic this skill creates.
