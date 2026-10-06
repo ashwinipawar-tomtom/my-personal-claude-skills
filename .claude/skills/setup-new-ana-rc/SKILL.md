@@ -61,7 +61,11 @@ Match the **`SdkVer Release (ANA)`** success notification (bot: `ACME Notifier`)
 
 All four conditions must hold: repo is **`tomtom-internal/navapp-automotive`**, the text contains **`SdkVer Release (ANA)`**, it is the **success** variant (`:white_check_mark:` / `successful`), and the version comes from the `*tomtom-internal/navapp-automotive {version}*` prefix.
 
-**This replaced the old `*ANA release {version} success*` format on 2 October 2026.** `0.13.0-rc01` was the first build under the new scheme — it has no `ANA release … success` message, and that is not a fault. Still accept the old shape for anything released before that date, so historical runs stay reproducible.
+**On 2 October 2026 this replaced the old `*ANA release {version} success*` format, but only on the newest release line.** `0.13.0-rc01` was the first build under the new scheme. It has no `ANA release … success` message, and that is not a fault.
+
+**Older release branches still post the legacy format, so accept both formats at any date.** On 6 October 2026, `0.10.3` and `0.11.1` came from release/0.10 and release/0.11 as `*ANA release {version} success*` messages, while `0.13.0-rc02` came as `SdkVer Release (ANA)`. A date cut-off on the legacy format would have silently dropped both patch releases. If one version appears in both formats, deduplicate on the version and use the earlier `ts`.
+
+The legacy message carries the NavSDK version as `*NavSDK Version:* {navsdk_version}` in its attachment. Use it for the same cross-check described below.
 
 The new message also carries **`*NavSDK:* {navsdk_version}`** inline. Use it as a cross-check against the version read from `gradle/gosdk-libs.versions.toml` at the tag; the toml stays authoritative, and a mismatch is worth reporting rather than silently preferring one.
 
@@ -75,7 +79,7 @@ The new message also carries **`*NavSDK:* {navsdk_version}`** inline. Use it as 
 | `… go-sdk-android {version}*: Release pipeline run …` | ❌ Ignore silently — that is a NavSDK release, not ANA. |
 | `… Promote to Public Release` / `Promote to Public Pre-Release` | ❌ Ignore — promotion of an already-tested build. Report under "Ignored". |
 | `:gear:` / `:github-pr-merged:` intake-PR messages | ❌ Ignore entirely. |
-| *(legacy)* `*ANA release {version} success*` | ✅ Process — pre-2 Oct 2026 only. |
+| *(legacy)* `*ANA release {version} success*` | ✅ Process, at any date. Older release branches still use this format. |
 | *(legacy)* `*ANA Public release {version} success*` | ❌ Ignore — promotion. Report under "Ignored". |
 | *(legacy)* `*UXL release {version} success*` | ❌ Ignore silently — different product. |
 
@@ -138,6 +142,8 @@ Match on a summary of `ANA RC {version} validation` or `ANA {version} validation
 Invoke the **`create-ana-rc-validation-ticket`** skill with `navapp_version = {version}`.
 
 Do not re-implement any of it. That skill owns NavSDK version resolution, previous-version derivation, the fixes table, the Epic fields, the sanity checklist comment and its own Slack notification — and it has its own duplicate guard.
+
+**Patch releases (`X.Y.Z` with `Z > 0`, e.g. `0.11.1`) need the previous version passed in.** They have no RC tags of their own, so the Epic skill's final-release lookup ("last `X.Y.Z-rcNN` tag") finds nothing. Use `prev_navapp_version = X.Y.(Z-1)` (e.g. `0.11.1` → `0.11.0`, `0.10.3` → `0.10.2`). This is what was confirmed by hand on 2026-10-06. Check that the tag exists before using it. If it doesn't, stop for this version and report it, because an unattended run cannot ask. Take `prev_navsdk_version` from `gosdk-libs.versions.toml` at that previous tag. Build the fixes table from the `fix(NAV-…)` commits in the `{prev}...{version}` diff, as the final-release path does. A ticket that carries the fixVersion but has no commit in the diff (e.g. NAV-209472 on 0.10.3) is left out of the table. Mention it in the report.
 
 Record from its output:
 - `epic_key` and `epic_url`
@@ -288,7 +294,9 @@ Verified working on 2026-10-05. Omit `data-local-id` on the replacement node —
 
 ⚠️ **Do not use `appendNodeToEnd` to add a row to a table on this page.** The `<tbody>` tags here carry **no** `data-local-id`, so there is no valid tbody target, and aiming it at the **table's** `data-local-id` appends the `<tr>` *after* `</table>` — an orphaned row outside any table, at the very end of the page body. Caught by the dryRun diff on 2026-10-05; it would have published malformed markup.
 
-If a version genuinely has no row and no granular operation will place one inside the tbody, **report that and stop for that version** rather than writing a malformed page. Do not fall back to a full-body replacement on a page this large that other people own.
+**Adding a new row:** use `insertNodeAfter` with `localId` set to the **last `<tr>`'s `data-local-id`** in the target table. Rows on this page do carry ids, even though `<tbody>` does not. Copy each cell's `data-colwidth` and `data-background` from that row, and omit `data-local-id` on the new nodes. This was verified on 2026-10-06 (page v549): it added 0.13.0-rc02, 0.11.1 and 0.10.3 in one batched call, and the dryRun row diff showed exactly 3 inserts, each inside its own table. In the dryRun, the raw count of `<table` goes up by one. That comes from an existing `legacy-content` macro whose `data-parameters` payload is re-escaped (`&lt;table` → `<table`). It is not a new table. Check the `</table>` count and the row diff instead.
+
+If a version has no row and even `insertNodeAfter` can't place one inside the table, **report that and stop for that version** rather than writing a malformed page. Do not fall back to a full-body replacement on a page this large that other people own.
 
 Also pass `snapshotToken` from 6a, `minorEdit: true`, and `versionMessage: Set up ANA {version} validation row`.
 
@@ -363,7 +371,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Never process a version whose notification predates the window, even if it has no Epic. Report it instead.
 - Use `response_format: detailed` on the Slack read — the message `ts` is the build time and `concise` omits it.
 - Render `build_datetime` in **Europe/Amsterdam**, never raw UTC.
-- Match the `SdkVer Release (ANA)` success notification on `tomtom-internal/navapp-automotive` (Step 2); accept the legacy `*ANA release {version} success*` only for builds before 2 Oct 2026.
+- Match the `SdkVer Release (ANA)` success notification on `tomtom-internal/navapp-automotive` **and** the legacy `*ANA release {version} success*` at any date (Step 2). Older release branches still post the legacy format.
 - **Never match the `SdkVer Release (UXL)` twin** — same version, ~4 s earlier — nor a `:x:` failed run, a `go-sdk-android` release, or a `Promote to Public …` run.
 - Do not blanket-ignore `:white_check_mark:` pipeline messages; the notification this skill needs is one.
 - Skip any version containing `-dev`.
@@ -377,6 +385,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.
 - Never create a release-line section that doesn't exist — report and stop for that version.
 - Always `dryRun` the Confluence update and verify it **by comparing extracted `<tr>` lists**, never a character diff — the server regenerates every `data-local-id` on write (Step 6e).
-- Enrich cells with `replaceNode` on the empty paragraph's `data-local-id`. **Never `appendNodeToEnd` against a table's id** — it orphans the row outside the table (Step 6e).
+- Enrich cells with `replaceNode` on the empty paragraph's `data-local-id`. Add a row with `insertNodeAfter` on the table's last `<tr>` id. **Never `appendNodeToEnd` against a table's id**, because it orphans the row outside the table (Step 6e).
+- For a patch release (`X.Y.Z`, `Z > 0`), pass `prev_navapp_version = X.Y.(Z-1)` to the Epic skill after checking the tag exists (Step 4).
 - Find a release-line table by its own `<table> … </table>` span, never by slicing to the next bold paragraph — the table can run past it (Step 6b).
 - Always pass the `snapshotToken` from the same read; on conflict re-read and retry once rather than forcing.
