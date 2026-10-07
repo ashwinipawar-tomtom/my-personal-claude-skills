@@ -101,6 +101,20 @@ Escaped pipes (`\|`) inside a cell are separators *in the text*, not column boun
 
 Reproduce the round's own counts and keys, grouped by severity, in the order Critical → Major → Minor. Keep any trailing qualifier the round recorded (`Already reported, observed on this build`, `Switched to rc14`, `Skipped`, `No new issues`).
 
+**Render each severity count as a status lozenge** followed by its keys, in the same style as the NavSDK board. Use the same lozenge markup as the stream statuses (Step 2a). The user asked for this on 2026-10-07.
+
+| Count | Lozenge label | `data-color` |
+|---|---|---|
+| `N Critical` (with or without `(A)`) | `N Critical` | `red` |
+| `N Major` | `N Major` | `yellow` |
+| `N Minor` | `N Minor` | `blue` |
+| `No new issues` | `No new issues` | `green` |
+
+- **Bugs found column:** e.g. `{red "1 Critical"} NAV-209428`, then `{yellow "6 Major"} GOSDK-227315, …` on the next line. Drop the colon after the count, because the lozenge separates it from the keys.
+- **Pulse table:** counts only, e.g. `{yellow "5 Major"}, {blue "1 Minor"}`.
+- **Pre-existing counts:** colour these as well, but keep the `+ N pre-existing (already reported):` lead-in so they're never read as new issues.
+- **Free-text qualifiers stay plain text:** `Switched to rc14`, notes, and a key labelled inline like `NAV-205381 (Critical issues exists on this build)`.
+
 **Use the counts as the round stated them**, even where they disagree with the number of keys listed (0.11.0-rc01 says "4 Critical" against 6 keys, one struck through; 0.11.0-rc02 says "1 Major" against 2). The page is the authoritative per-round record — do not silently recount.
 
 Pre-existing issues re-observed on a build go on their own line, **not into the new-issue counts**.
