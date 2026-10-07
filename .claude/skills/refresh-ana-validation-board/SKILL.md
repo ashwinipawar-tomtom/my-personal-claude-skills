@@ -15,7 +15,7 @@ The board is the ANA counterpart of the [NavSDK Release Validation Board](https:
 
 | Input | Default | Notes |
 |---|---|---|
-| `lines` | `0.10,0.11,0.12,0.13` | Release lines to include, newest first in the output. |
+| `lines` | `0.9,0.10,0.11,0.12,0.13` | Release lines to include, newest first in the output. 0.9 was added on 2026-10-07 at the user's request. |
 
 ---
 
@@ -25,13 +25,13 @@ The board is the ANA counterpart of the [NavSDK Release Validation Board](https:
 
 ```
 project = NAV AND issuetype = Epic AND parent = NAV-202198
-AND (summary ~ "0.10" OR summary ~ "0.11" OR summary ~ "0.12" OR summary ~ "0.13")
+AND (summary ~ "0.9" OR summary ~ "0.10" OR summary ~ "0.11" OR summary ~ "0.12" OR summary ~ "0.13")
 ORDER BY summary ASC
 ```
 
 Fields `["summary", "status"]`, `view: full`, `maxResults: 60`.
 
-**Discard non-ANA matches.** The `~` operator is fuzzy and returns unrelated Epics (e.g. `[Foxtron] 0.5 RC sanity testing - 0.5.13`). Keep only summaries matching `ANA (RC )?{version} validation`.
+**Discard non-ANA matches.** The `~` operator is fuzzy and returns unrelated Epics (e.g. `[Foxtron] 0.5 RC sanity testing - 0.5.13`). Keep only summaries matching `ANA (RC )?{version} validation`, where the version's line is one of `lines` (match `0.9.` exactly, so `0.9` doesn't pick up 0.90-something or other products).
 
 Parse the version out of each summary. Some Epics cover **two RCs** (`ANA RC 0.11.0-rc08/09 validation`, `ANA RC 0.10.0-rc11/12 validation`) — keep the combined label and render one row.
 
@@ -89,6 +89,10 @@ A drive test shared across RCs (e.g. `ANA 0.12.0-rc04/05 Drive test`) appears on
 Large — parse the saved file as JSON and take `data.body.value`.
 
 Locate each line's section (bold paragraphs, inconsistent spacing: `**0.10 Releases : **`, `**0.12 Releases :**`). Match tolerantly: collapse whitespace, strip the trailing colon. A section runs to the next bold-paragraph heading or `**Mainline Validation**`.
+
+**0.9 has no section heading.** Its rows sit in the untitled table immediately above `**0.10 Releases : **`, after the 0.5–0.8 tables. Take the rows whose Release version starts `0.9.`, from any table above the 0.10 heading. Some 0.9 rows split into 9–10 columns because of unescaped pipes in the Comments text, so treat everything from column 8 onward as the Comments cell.
+
+**0.9 comments use an older free-text format.** Many rounds give counts without keys (`2 Critical(crash), 8 Major, 8 Minor`), or put a key behind a severity word (`1 [Critical](…NAV-201256)`). Don't force these into the `N Severity: keys` shape. Reproduce the note as written, turn markdown links into ticket links, and colour each count as a severity lozenge (Step 3a). Counts with no keys can't be checked in Step 5. Say so in the open-criticals banner (0.9.0-rc01's 2 Critical crashes have no keys).
 
 For each 8-column row in those sections:
 
@@ -244,7 +248,11 @@ Page structure, in order:
 3. Severity note — graded by Jira **Severity**, not Priority; counts come from each round's record on ANA Versions Tested and span all projects and all reporters
 4. A line explaining the three ANA streams (Sanity desk / APAC / Drive test)
 5. **Now in work & recently finished** — the pulse: **every round that is Open or In Progress** (the Epic is not Done, or any child is not Done), **plus the single most recently finished round** (the newest build whose Epic and children are all Done). No other finished rounds; the user asked for exactly this on 2026-10-06. Newest build first, with a one-line intro: `Every round still Open or In Progress, plus the most recently finished one.` Columns: Release · NavSDK · Sanity · APAC · Drive test · Build appeared · Bugs found (summarised as counts only).
-6. **By release line** — one `h4` and table per line, newest line first, newest RC first within each. Columns: ANA release · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys).
+6. **By release line** — one **collapsible expand per line** (not an `h4`), newest line first, newest RC first within each, with the line's table inside it. The user asked for this on 2026-10-07, so a reader opens only the line they need. Put a one-line `Click a release line to expand it.` paragraph under the `By release line` heading. Columns: ANA release · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys).
+
+   ```html
+   <details data-breakout="wide"><summary>{line} releases ({row count})</summary><table data-layout="full-width">…</table></details>
+   ```
 
 **Release cell, in both tables:** the version in bold, then the Epic key as a visible link on its own line, so the key can be read without hovering:
 
@@ -259,6 +267,8 @@ A round with no Epic reads `<strong>{label}</strong><br>(no Epic)`. Don't put th
 Always `dryRun: true` first and check the result before writing for real.
 
 Set `contentWidth: wide` — six columns of links need the room.
+
+**Every table is `<table data-layout="full-width">` with no `data-width`.** That includes the pulse table and the tables inside the expands. A hand edit in the Confluence editor pins tables to `data-width="960"`, which squeezes them. Seen on 2026-10-07, after a manual edit to the 0.9 table. Writing every table without `data-width` on each run undoes it.
 
 ---
 
