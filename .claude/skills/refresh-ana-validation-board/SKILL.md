@@ -57,9 +57,26 @@ This response is large and will likely be saved to a file. **Parse it as JSON wi
 
 Check **APAC before Drive test before Sanity** — `[APAC] ANA RC … validation` must not fall through to Sanity.
 
-Where an Epic has **several area tests** instead of one sanity ticket (the rc01 Epics do), render `DONE — N area tests (names)` rather than listing every key.
+Render each cell as `{status lozenge} {key as link}`. Use `—` when a stream has no ticket.
 
-Render each cell as `{STATUS} {key as link}`, status uppercased (`DONE`, `IN PROGRESS`, `OPEN`, `BLOCKED`). Use `—` when a stream has no ticket.
+The status is a Confluence **status lozenge**, never plain text, in the same style as the NavSDK board. The user asked for this on 2026-10-07:
+
+```html
+<span data-type="status" data-color="{color}" data-status-style="bold">{Label}</span>
+```
+
+| Jira status category / name | Label | `data-color` |
+|---|---|---|
+| Done | `Done` | `green` |
+| In Progress (or any other in-progress status, e.g. In Review) | `In Progress` (or the status name) | `blue` |
+| Open / To Do / New | `Open` | `neutral` |
+| Blocked | `Blocked` | `neutral` |
+
+Pick the colour from the status **category**, so an unfamiliar status name still gets the right colour. Omit `data-local-id`, because the server assigns one.
+
+Where an Epic has **several area tests** instead of one sanity ticket (the rc01 Epics do):
+- **All in the same status:** render `{lozenge} — N area tests (names)` rather than listing every key.
+- **Statuses differ:** list each test with its own lozenge and key, e.g. `4 area tests: Map Experience {Open lozenge} NAV-209909, E2E {In Progress lozenge} NAV-209910, …`. One lozenge for the whole group would hide which tests are still open.
 
 A drive test shared across RCs (e.g. `ANA 0.12.0-rc04/05 Drive test`) appears on both rows; on the earlier one render `combined with {other rc} {key}`.
 
