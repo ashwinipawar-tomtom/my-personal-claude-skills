@@ -92,7 +92,7 @@ Locate each line's section (bold paragraphs, inconsistent spacing: `**0.10 Relea
 
 **0.9 has no section heading.** Its rows sit in the untitled table immediately above `**0.10 Releases : **`, after the 0.5–0.8 tables. Take the rows whose Release version starts `0.9.`, from any table above the 0.10 heading. Some 0.9 rows split into 9–10 columns because of unescaped pipes in the Comments text, so treat everything from column 8 onward as the Comments cell.
 
-**0.9 comments use an older free-text format.** Many rounds give counts without keys (`2 Critical(crash), 8 Major, 8 Minor`), or put a key behind a severity word (`1 [Critical](…NAV-201256)`). Don't force these into the `N Severity: keys` shape. Reproduce the note as written, turn markdown links into ticket links, and colour each count as a severity lozenge (Step 3a). Counts with no keys can't be checked in Step 5. Say so in the open-criticals banner (0.9.0-rc01's 2 Critical crashes have no keys).
+**0.9 comments use an older free-text format.** Many rounds give counts without keys (`2 Critical(crash), 8 Major, 8 Minor`), or put a key behind a severity word (`1 [Critical](…NAV-201256)`). Don't force these into the `N Severity: keys` shape. Reproduce the note as written, turn markdown links into ticket links, and colour each count as a severity lozenge (Step 3a). Counts with no keys can't be checked in Step 5. Leave them out of the check silently: don't mention them in the banner or the caveats. The user asked for this on 2026-10-09.
 
 For each 8-column row in those sections:
 
@@ -181,9 +181,9 @@ print(dt.strftime('%d %b %Y, %-I:%M %p'))
 " {ts}
 ```
 
-If a release has **neither** notification, write `—` and say so in the caveats. Do **not** substitute the GitHub tag or release-publication time — that is a different event again, and mixing it in makes the column meaningless.
+If a release has **neither** notification, write `—`. Do **not** substitute the GitHub tag or release-publication time — that is a different event again, and mixing it in makes the column meaningless.
 
-⚠️ **The column is not comparable across the two formats.** The legacy event fires 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so a time from the new notification sits earlier in the day than a legacy one for the same stage. That holds for historical rows and for older-branch releases posted today. Note it in the caveats; never retro-fill or "correct" an older row.
+⚠️ **The column is not comparable across the two formats.** The legacy event fires 2–5 hours *after* the `SdkVer Release (ANA)` pipeline, so a time from the new notification sits earlier in the day than a legacy one for the same stage. That holds for historical rows and for older-branch releases posted today. Never retro-fill or "correct" an older row. Don't add a caveat about it; the user removed it on 2026-10-09.
 
 ---
 
@@ -218,18 +218,22 @@ Query the collected keys:
 key in ({critical keys}) ORDER BY key ASC
 ```
 
-Fields `["summary", "status", "customfield_10140"]`, `view: evidence`.
+Fields `["summary", "status", "customfield_10140", "issuelinks"]`, `view: evidence`.
 
-- **All in a Done status category** → banner reads `**No open critical issues.** Every bug recorded as Critical in ANA release testing across {lines} is now in a Done status.`
-- **Any still open** → banner lists them: `**{N} open critical issue(s):** {key} — {summary}` for each.
+**Follow duplicates before calling a Critical closed.** A Critical can be in a Done status only because triage closed it as a duplicate of another issue that is still open. For every Done key, check its `issuelinks` for a `Duplicate` link where this key is the one that *duplicates* (outward `duplicates` → the other issue). Fetch that issue's status. If it is not Done, the crash is still open, so treat the recorded Critical as **open via its duplicate**. Verified on 2026-10-09: GOSDK-227941 (recorded Critical on 0.11.0) is Done, but it duplicates **GOSDK-227144** ("[EVA25-4268] [JP] JLR JEA NavApp crash after panning map"), which is still In Progress. The banner said "No open critical issues", which was wrong.
 
-Some keys resolve to a **different key** (triage moved them) and some now carry a different Severity than the round recorded. Note both in the caveats; keep the round's label in the table.
+- **All in a Done status category, including any duplicate targets** → banner reads `**No open critical issues.** Every bug recorded as Critical in ANA release testing across {lines} is now in a Done status.`
+- **Any still open** → banner lists them: `**{N} open critical issue(s):** {key} — {summary}` for each. For one that is open via a duplicate, write `{open key} — {summary} ({status}; recorded as {recorded key} on {release}, closed as its duplicate)`.
+
+The banner covers bugs **recorded as Critical** on ANA Versions Tested only. It never uses Jira Priority, so an `Urgent` bug whose Severity is Major is not listed, unless a recorded Critical duplicates it as above.
+
+Some keys resolve to a **different key** (triage moved them) and some now carry a different Severity than the round recorded. Keep the round's label in the table. Severity drift goes in the caveats; moved keys don't (the user removed that caveat on 2026-10-09; the links redirect anyway).
 
 ---
 
 ## Step 6 — Stale Epic statuses
 
-An Epic whose children are **all Done** but whose own status is not Done (seen in `Funnel` and `In Progress`) has a stale status. Collect these and list them in the caveats, so a reader knows to trust the per-stream statuses over the Epic.
+An Epic whose children are **all Done** but whose own status is not Done (seen in `Funnel` and `In Progress`) has a stale status. Collect these and list them in the caveats, so a reader knows to trust the per-stream statuses over the Epic. **If there are none, leave the caveat out entirely.** Don't write "none this run"; the user asked for this on 2026-10-09.
 
 Do not change the Epic — this skill only reports.
 
@@ -262,7 +266,7 @@ Page structure, in order:
 
 A round with no Epic reads `<strong>{label}</strong><br>(no Epic)`. Don't put the link on the version text alone. The user asked for the Epic to be visible on every row.
 7. **How to use this board**
-8. **Caveats for this snapshot** — refresh date and that it is script-written; stale Epic statuses (Step 6); severity drift (Step 5); moved bug keys; any RC with no validation record at all
+8. **Caveats for this snapshot**, with only these items: the refresh date and that the page is script-written; stale Epic statuses (Step 6), only when there are any; severity drift (Step 5). The user removed these on 2026-10-09, so **don't** add them: moved bug keys, build-time format comparability, Critical counts without keys, rounds with no Epic, or a "none this run" stale-status line.
 
 Always `dryRun: true` first and check the result before writing for real.
 
