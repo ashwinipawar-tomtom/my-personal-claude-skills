@@ -97,6 +97,7 @@ Locate each line's section (bold paragraphs, inconsistent spacing: `**0.10 Relea
 For each 8-column row in those sections:
 
 - **Release version cell** → the ANA version, and the NavSDK version in parentheses (`0.11.0-rc16 (2.6.2)Build : 6:05 PM` → version `0.11.0-rc16`, NavSDK `2.6.2`)
+- **Go/ No-Go Recommendation cell (column 7)** → the round's verdict (Step 3b)
 - **Comments cell (column 8)** → the bug record
 
 Escaped pipes (`\|`) inside a cell are separators *in the text*, not column boundaries — substitute a placeholder before splitting on `|`, then restore.
@@ -122,6 +123,21 @@ Reproduce the round's own counts and keys, grouped by severity, in the order Cri
 **Use the counts as the round stated them**, even where they disagree with the number of keys listed (0.11.0-rc01 says "4 Critical" against 6 keys, one struck through; 0.11.0-rc02 says "1 Major" against 2). The page is the authoritative per-round record — do not silently recount.
 
 Pre-existing issues re-observed on a build go on their own line, **not into the new-issue counts**.
+
+### 3b — Go/No-Go rendering
+
+Every 0.9+ table on ANA Versions Tested has a `Go/ No-Go Recommendation` column (column 7). Find it by header text, not position. The user asked for it on the board on 2026-10-13. The QA lead writes it by hand, with a traffic-light emoji and a free-text reason:
+
+| Emoji in the cell | Lozenge label | `data-color` |
+|---|---|---|
+| 🟢 | `Go` | `green` |
+| 🟡 | `Go with caveats` | `yellow` |
+| 🔴 | `No-Go` | `red` |
+
+- Swap each emoji and its verdict words (`- Go`, `: Go with caveats`, `: No-Go`, `No Go`) for the lozenge. Keep the rest of the text as written: the reason (`due to APAC mentioned issue`), a lead-in (`So far :`, `Considering the regression issue -`) and any note. Turn ticket keys and URLs into ticket links.
+- If a cell holds **more than one verdict** (0.12.0-rc03: `🔴 : No-Go due to crash issue found 🟡 : Go with caveats`), render each in the order written. Don't pick one.
+- An **empty cell** renders `—`. Never infer a verdict from the bug counts or the stream statuses.
+- Use the same text in both tables; the pulse table doesn't shorten it.
 
 **Split the cell before counting anything.** Several rounds append a clause like `Already reported, still present in rc05 — 1 Major: NAV-206998` or `Already reported, observed on this build — 1 Major: … | 1 Minor: …`. A regex that sums every `N Major` in the cell silently inflates the round — verified on 0.12.0-rc05 (reported 7 Major instead of 6) and 0.11.0-rc16 (3 Major, 3 Minor instead of 2 and 2).
 
@@ -251,8 +267,8 @@ Page structure, in order:
 2. Open-criticals banner (Step 5)
 3. Severity note — graded by Jira **Severity**, not Priority; counts come from each round's record on ANA Versions Tested and span all projects and all reporters
 4. A line explaining the three ANA streams (Sanity desk / APAC / Drive test)
-5. **Now in work & recently finished** — the pulse: **every round that is Open or In Progress** (the Epic is not Done, or any child is not Done), **plus the single most recently finished round** (the newest build whose Epic and children are all Done). No other finished rounds; the user asked for exactly this on 2026-10-06. Newest build first, with a one-line intro: `Every round still Open or In Progress, plus the most recently finished one.` Columns: Release · NavSDK · Sanity · APAC · Drive test · Build appeared · Bugs found (summarised as counts only).
-6. **By release line** — one **collapsible expand per line** (not an `h4`), newest line first, newest RC first within each, with the line's table inside it. The user asked for this on 2026-10-07, so a reader opens only the line they need. Put a one-line `Click a release line to expand it.` paragraph under the `By release line` heading. Columns: ANA release · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys).
+5. **Now in work & recently finished** — the pulse: **every round that is Open or In Progress** (the Epic is not Done, or any child is not Done), **plus the single most recently finished round** (the newest build whose Epic and children are all Done). No other finished rounds; the user asked for exactly this on 2026-10-06. Newest build first, with a one-line intro: `Every round still Open or In Progress, plus the most recently finished one.` Columns: Release · NavSDK · Sanity · APAC · Drive test · Build appeared · Bugs found (summarised as counts only) · Go/No-Go (Step 3b).
+6. **By release line** — one **collapsible expand per line** (not an `h4`), newest line first, newest RC first within each, with the line's table inside it. The user asked for this on 2026-10-07, so a reader opens only the line they need. Put a one-line `Click a release line to expand it.` paragraph under the `By release line` heading. Columns: ANA release · NavSDK · Sanity (desk) · APAC · Drive test · Bugs found (by severity, with keys) · Go/No-Go (Step 3b).
 
    ```html
    <details data-breakout="wide"><summary>{line} releases ({row count})</summary><table data-layout="full-width">…</table></details>
@@ -270,7 +286,7 @@ A round with no Epic reads `<strong>{label}</strong><br>(no Epic)`. Don't put th
 
 Always `dryRun: true` first and check the result before writing for real.
 
-Set `contentWidth: wide` — six columns of links need the room.
+Set `contentWidth: wide` — seven or eight columns of links need the room.
 
 **Every table is `<table data-layout="full-width">` with no `data-width`.** That includes the pulse table and the tables inside the expands. A hand edit in the Confluence editor pins tables to `data-width="960"`, which squeezes them. Seen on 2026-10-07, after a manual edit to the 0.9 table. Writing every table without `data-width` on each run undoes it.
 
@@ -305,6 +321,7 @@ The routine checks this repository out as its session source and **reads this fi
 - Classify children **APAC → Drive test → Sanity**, in that order.
 - Bug counts come from the **ANA Versions Tested Comments column**, never from a reporter-scoped JQL — the page records all projects and all reporters, which a NAV-only query misses.
 - Reproduce each round's **stated** counts even when they disagree with the keys listed; never silently recount.
+- Go/No-Go comes only from the round's own `Go/ No-Go Recommendation` cell; an empty cell is `—`, never an inferred verdict.
 - Severity comes from the round's record; the ticket's current `customfield_10140` is only used for the open-criticals check and the drift note. Never use Jira **Priority** as severity.
 - Build times come **only** from the release notification: `SdkVer Release (ANA)` or the legacy `*ANA release … success*`, whichever the version posted, at any date (older branches still post the legacy one). Render them in Europe/Amsterdam. Never substitute a GitHub tag or release-publication time, and never the `SdkVer Release (UXL)` twin.
 - Get those notifications with a timestamp-bounded `slack_read_channel`. **Never `slack_search_public`** — it ignores the `in:` and `after:` filters and returns the wrong channel and year (Step 4).
