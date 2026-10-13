@@ -5,6 +5,7 @@ End-to-end setup for a **newly released ANA RC**. Detects new releases from Slac
 1. Creates the RC validation **Epic** (by invoking `create-ana-rc-validation-ticket`)
 2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests)
 3. Adds (or enriches) the version's row on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page, including the **build date/time** and the **owner tag** in each testing column
+4. For every release: sets the Epic's **Target end** to the build date + 5 working days (RC) or + 2 working days (final or patch release), and puts a **Planned, To be finished by {date}** line in the row's Comments cell. On every run, it also strikes that line through once the round's testing is Done (Step 6f).
 
 Designed to run **unattended on a schedule**. Every step is idempotent, so a repeat run on an already-processed version changes nothing.
 
@@ -132,7 +133,7 @@ project = NAV AND issuetype = Epic AND summary ~ "{version}" ORDER BY created DE
 
 Match on a summary of `ANA RC {version} validation` or `ANA {version} validation` **exactly** — `~` is fuzzy and will also return the other RCs in the line.
 
-- **Epic exists** → do not create another. Record its key and continue to Steps 5 and 6, which will fill in anything still missing (children, Confluence row). Report the version as "Epic already existed".
+- **Epic exists** → do not create another. Record its key and continue to Steps 4a, 5 and 6, which will fill in anything still missing (children, Confluence row). Report the version as "Epic already existed".
 - **No Epic** → continue to Step 4.
 
 ---
@@ -150,6 +151,37 @@ Record from its output:
 - `navsdk_version` (needed for the Confluence row)
 
 **If it fails or stops** (e.g. it cannot resolve a version id, or the fixes table can't be built), **stop for this version**. Do not create children or a Confluence row pointing at an Epic that doesn't exist. Report the failure and move to the next version.
+
+### 4a — Target end on the Epic (every release)
+
+The user asked for this on 2026-10-13. A stakeholder kept asking in Slack when a round would finish, and the page didn't say.
+
+| Version shape | Example | Working days added |
+|---|---|---|
+| `X.Y.Z-rcNN` (rc01 included) | `0.12.0-rc07` | **5** |
+| Patch release `X.Y.Z`, `Z > 0` | `0.9.6`, `0.10.3` | **2** (added 2026-10-13) |
+| Final release `X.Y.0` | `0.11.0` | **2** (added 2026-10-13) |
+
+In short: **5 for an RC, 2 for anything without an RC suffix.**
+
+- **Date:** `build_date` plus that many **working days** (`N` below), skipping Saturdays and Sundays. `build_date` is the calendar date of the Slack `ts` in Europe/Amsterdam (Step 2c). Public holidays are not skipped. Examples: 0.12.0-rc07 was built on Fri 9 Oct 2026, so Target end is Fri 16 Oct 2026. A patch built on Fri 9 Oct would get Tue 13 Oct.
+
+  ```bash
+  python3 -c "
+  import sys, datetime, zoneinfo
+  d = datetime.datetime.fromtimestamp(float(sys.argv[1]), zoneinfo.ZoneInfo('Europe/Amsterdam')).date()
+  n = 0
+  while n < int(sys.argv[2]):
+      d += datetime.timedelta(days=1)
+      if d.weekday() < 5: n += 1
+  print(d.isoformat())
+  " {ts} {N}      # N = 5 for an RC, 2 for a final or patch release
+  ```
+
+- **Field:** `customfield_10023` (**Target end**), format `YYYY-MM-DD`, set with `editJiraIssue` on `{epic_key}`. Leave **Target start** (`customfield_10022`) alone; the user said to skip it.
+- **Idempotency:** read the Epic's Target end first. If it is already set, **keep it**, even if it differs from the computed date. Someone may have moved the plan on purpose. Use the value that's there for the planned line in Step 6.
+- **No build time** (a `version` forced without one): set nothing, and report it.
+- If the edit is rejected, report the error and carry on. Write no planned line, because it must match Jira.
 
 ---
 
@@ -250,7 +282,7 @@ A version-only row may already be there — `add-ana-release-row-confluence` run
 | Row exists, cells empty | **Enrich in place**: fill Release version, Ticket, Configuration and the three owner columns (with the child-ticket links, 6d). Never add a second row. |
 | Row exists with a non-empty cell | **Leave that cell exactly as it is** and fill only the empty ones. Report which cells were left alone. |
 
-Never overwrite a non-empty cell — Go/No-Go and Comments in particular are owned by QA and by `add-testing-analysis-confluence`.
+Never overwrite a non-empty cell — Go/No-Go and Comments in particular are owned by QA and by `add-testing-analysis-confluence`. The planned line (6d) is the one exception: it is **added** to the Comments cell, never replacing what's there, and only this skill's own line is ever struck through (6f).
 
 ### 6d — Cell contents
 
@@ -263,7 +295,7 @@ Never overwrite a non-empty cell — Go/No-Go and Comments in particular are own
 | Drive Test ? | mention **Max Bogers** (no ticket — Drive test is not created per RC, Step 5b) |
 | APAC Tested ? | mention **Joy Salem**, then the APAC sanity child (`[APAC] Sanity Testing for ANA {version}`) as an inline smart link on its own line |
 | Go/ No-Go Recommendation | **empty** |
-| Comments | **empty** |
+| Comments | the **planned line** (below) |
 
 Mention accountIds:
 
@@ -275,7 +307,20 @@ Mention accountIds:
 
 Author a mention as `<span data-type="mention" data-user-id="{accountId}">@{Display Name}</span>`. Confirm the exact node shape against the format guide from 6a before writing — if the mention node is rejected, fall back to the plain text `@{Display Name}` and say so in the report rather than failing the whole row.
 
-Leave Go/No-Go and Comments empty. The owner columns carry **who** and **which ticket**, not a date. This skill never sets a planned date.
+Leave Go/No-Go empty. The owner columns carry **who** and **which ticket**, not a date.
+
+**Planned line (every release, added 2026-10-13):** the Comments cell gets the Epic's Target end (Step 4a) as one paragraph, in the shape the user wrote by hand for 0.12.0-rc07 (page v625): bold text, a Confluence date, then a plain `*`.
+
+```html
+<p><strong>Planned, To be finished by </strong><time datetime="{target_end}">{Month D, YYYY}</time>*</p>
+```
+
+- Use the date that is **on the Epic**, not one you computed, so the page and Jira always agree.
+- **The `*` points to a note at the top of the page:** `* Planned dates may change due to other priorities / team capacity.` (in italics). It was added on 2026-10-13 (page v626) as the first paragraph, before `Release Version :`. Write it there **only if no paragraph on the page already starts with `* Planned dates may change`**, using `insertNodeBefore` on the page's first paragraph. Never edit or move it once it's there.
+- **Empty Comments cell:** `replaceNode` on its empty paragraph.
+- **Non-empty Comments cell without the line:** `insertNodeBefore` its first paragraph, so the plan sits on top and nothing is replaced.
+- **A plan is already in the cell**, in any wording: `Planned, To be finished by`, `Planned, Will be Done by`, `planned for {date}`, struck through or not. Leave the cell alone. Someone wrote it by hand, and a second line would contradict it.
+- **No Target end on the Epic:** write no line, and report it.
 
 **Child ticket + live status (added 2026-10-06):** in the desk and APAC cells, put the child from Step 5 in a second paragraph after the mention, as an inline **Jira issue macro** with the summary hidden:
 
@@ -360,6 +405,34 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
 
 **On a version conflict** (this page is edited often, by people and by the other ANA skills): re-read for a fresh `snapshotToken`, re-run the 6c checks (a row may have appeared meanwhile), retry once. Never pass a stale token and never force an overwrite.
 
+### 6f — Strike through finished plans (every run)
+
+**Run this on every run, even when Slack shows no new release.** A round finishes days after its release, long after the Step 2d window has closed on it. The user asked for this on 2026-10-13: once testing is Done, keep the wording as it is and strike it through.
+
+1. On the page from 6a, find every paragraph containing `Planned, To be finished by` that is **not** struck through yet (no `<s>` around it), in the release-line tables only. Never look in the Mainline Validation tables.
+2. Take the Epic key from each row's Ticket cell. It's a Jira macro (`macroParams.key.value`) or a link.
+3. Query those Epics and their children in one go:
+
+   ```
+   key in ({epic keys}) OR parent in ({epic keys})      fields: ["status", "parent"]
+   ```
+
+4. Testing is **Done** when the Epic's status category is Done, **or** the Epic has at least one child and every child's status category is Done. Epic statuses are often left stale (Funnel or In Progress after all the testing finished), so the children count as well.
+5. For each Done round, `replaceNode` the line's paragraph with the same wording, struck through:
+
+   ```html
+   <p><s><strong>Planned, To be finished by </strong>{Month D, YYYY}*</s></p>
+   ```
+
+   The date goes in as **plain text**, copied from the date node's `datetime`. A Confluence date node can't carry the strikethrough mark, so leaving the node in place would strike only the words and not the date.
+
+- **Only strike a line that's still exactly as this skill wrote it:** the bold `Planned, To be finished by `, one date node, then `*`, with nothing else in the paragraph. A line without the `*` (written before 2026-10-13) also counts; strike it as-is, without adding a `*`. If it has been changed by hand in any way (extra text, other wording, a typed date instead of a date node, other formatting), **leave it untouched** and report `planned line edited by hand, not struck: {version}`. The user asked for this on 2026-10-13: manual changes on the page are never overwritten.
+- **The date comes from the cell, not from Jira.** If someone moved the date on the page, the struck line keeps their date, even when the Epic's Target end says something else.
+- **Leave the line alone when testing isn't Done**, even if the date has passed. An overdue plan should stay visible.
+- **Never strike another line** in the cell, and never change the wording or the date.
+- **Batch:** put every strike in the same write as any row edits from this run, with the same dryRun and `<tr>` list check. Exactly the struck rows may differ.
+- **Nothing to strike and no new release:** make no write at all.
+
 ---
 
 ## Step 7 — Report
@@ -376,6 +449,10 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
    Linked existing children by assignee: {key} → Ashwini, {key} → Joy  (or "none under {epic_key} yet")
 ⚠  Children not placed (other assignee / unassigned): {key} ({assignee}), ...
 ⚠  Cells left untouched because they were already filled: {column}, ... for {version}
+📅 Target end set: {epic_key} → {date} ({version})   (or "kept existing {date}")
+✂️ Planned line struck through (testing Done): {version}, ...
+✋ Planned line edited by hand, not struck (strike it manually): {version}, ...
+⚠  No planned line: {version} ({reason: no Target end / edit rejected / no build time})
 ⚠  No section for release line {release_line} — nothing written for {version}
 🚫 Skipped (mainline dev build): {version}, ...
 🕒 Outside the {window_hours}h window — NOT processed: {version} (released {date}), ...
@@ -419,7 +496,10 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - For rc02 and later: exactly 2 children, both `Test Execution`, assigned as in Step 5a. Never substitute a different issue type if `Test Execution` is rejected — report instead.
 - Delegate Epic creation entirely to `create-ana-rc-validation-ticket`; never re-implement its steps.
 - If Epic creation fails, create no children and no Confluence row for that version.
-- Never overwrite a non-empty Confluence cell. Go/No-Go and Comments are always left empty by this skill.
+- Never overwrite a non-empty Confluence cell. Go/No-Go is always left empty by this skill. Comments gets only the planned line, which is added and never replaces anything (6d).
+- Target end = build date + 5 working days for an RC, + 2 for a final or patch release (no RC suffix), never overwriting an existing value; leave Target start alone (Step 4a).
+- Step 6f runs on **every** run, even with no new release. It strikes through only this skill's own `Planned, To be finished by` line, and only once testing is Done (the Epic Done, or all its children Done).
+- **Never overwrite a manual change on the page.** A planned line edited by hand is never struck or rewritten. A cell that already holds a plan in any wording gets no second line. Any date someone typed on the page wins over the Epic's (6d, 6f).
 - Never add a second row for a version that already has one — enrich the existing row.
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.
 - Never create a release-line section that doesn't exist — report and stop for that version.
