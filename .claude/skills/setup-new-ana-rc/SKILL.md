@@ -3,7 +3,7 @@
 End-to-end setup for a **newly released ANA RC**. Detects new releases from Slack, then for each one:
 
 1. Creates the RC validation **Epic** (by invoking `create-ana-rc-validation-ticket`)
-2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests)
+2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests, and **none while the previous RC's Epic is still Open/Funnel**, Step 5-pre2)
 3. Adds (or enriches) the version's row on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page, including the **build date/time** and the **owner tag** in each testing column
 4. For every release: sets the Epic's **Target end** to the build date + 5 working days (RC) or + 2 working days (final or patch release), and puts a **Planned, To be finished by {date}** line in the row's Comments cell. On every run, it also strikes that line through once the round's testing is Done (Step 6f).
 
@@ -197,6 +197,28 @@ Report rc01 as `Epic created, no children (rc01 — area tests are planned by ha
 
 This applies to any version the Epic treats as a first RC, including one forced with `treat_as_first_rc = yes`.
 
+### 5-pre2 — Skip children while the previous RC hasn't started
+
+The user asked for this on 2026-10-22, ahead of 0.13.0-rc04. When a new RC lands before testing of the previous RC has even started, the team picks up the newer build instead. Children created for the older round would sit unused next to the new ones.
+
+**Applies to `X.Y.Z-rcNN` with `NN ≥ 02`.** Final and patch releases (no RC suffix) are not affected.
+
+1. Find the **previous RC's Epic** in the same release line: the Epic under NAV-202198 whose summary is `ANA RC X.Y.Z-rcMM validation` (or `ANA X.Y.Z-rcMM validation`) with the **highest `MM` below `NN`**. Match exactly, because `~` is fuzzy. A combined Epic counts when either side of the slash matches, e.g. `ANA RC 0.12.0-rc06/07 validation` for rc07.
+
+   ```
+   project = NAV AND issuetype = Epic AND parent = NAV-202198 AND summary ~ "X.Y.Z-rc" ORDER BY created DESC
+   fields: ["summary", "status"]
+   ```
+
+2. **Its status is `Open` or `Funnel`** (testing not started): **create no child work items** for this version. Create the Epic as normal (Step 4, with Target end from 4a) and go on to Step 6.
+   - **Confluence row:** add or enrich it as usual. The desk and APAC owner cells get the **mention only**, with no child macro, the same as an rc01 with no children yet (6d).
+   - **Previous Epic left alone:** don't change its status or anything else about it.
+3. **Its status is anything else** (In Progress, Done, Blocked…), or **no previous Epic is found** (e.g. a skipped RC), or the previous version is rc01: create the children as normal (5a).
+
+Report it as `Epic created, no children (previous RC {prev_version} {prev_epic_key} still {status})`.
+
+**Re-runs:** the check runs again every time Step 5 is reached. A later manual run with `version = {version}`, once the previous Epic has moved on, creates the children then. Steps 5c and 6d stop duplicates and fill the owner cells.
+
 ### 5a — The two children (rc02 and later)
 
 Create these under the Epic with `createJiraIssue`, `parent: {epic_key}`:
@@ -335,7 +357,7 @@ It renders as the linked key plus a **status lozenge read live from the ticket**
 
 The macro shape is copied from an existing one on the ANA page *Q4 2026 UxLibrary* (2462515985). Only `key` is needed, with no `serverId`. Omit `macroId`, because Confluence generates it. Verified on page v565. Use the child keys whether this run created them or found them already present (Step 5c).
 
-**rc01, and any version without the sanity pair:** this skill creates no children for an rc01 (Step 5-pre), but the team adds area-test tickets under the Epic by hand. Link **whatever children already exist**, matched to a column by **assignee**:
+**rc01, and any version without the sanity pair:** this skill creates no children for an rc01 (Step 5-pre) or while the previous RC is still Open/Funnel (Step 5-pre2), but the team adds area-test tickets under the Epic by hand. Link **whatever children already exist**, matched to a column by **assignee**:
 
 ```
 parent = {epic_key} ORDER BY key ASC      fields: ["summary", "assignee"]
@@ -446,6 +468,7 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
 
 ⏭  Already set up (no change): {version} — Epic {key}, children present, row present
 ℹ  rc01 — no children created (area tests are planned by hand): {version}
+ℹ  No children created (previous RC not started): {version} — {prev_version} {prev_epic_key} is still {Open/Funnel}
    Linked existing children by assignee: {key} → Ashwini, {key} → Joy  (or "none under {epic_key} yet")
 ⚠  Children not placed (other assignee / unassigned): {key} ({assignee}), ...
 ⚠  Cells left untouched because they were already filled: {column}, ... for {version}
@@ -493,6 +516,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Skip any version containing `-dev`.
 - **Never create a Drive test work item** (Step 5b) — it is a shared, multi-RC task owned by the Drive Test team.
 - **No child work items for an rc01** (Step 5-pre) — rc01 is a full regression split into area tests planned by hand, not the desk/APAC sanity pair.
+- **No child work items while the previous RC's Epic is Open or Funnel** (Step 5-pre2): create the Epic only, and leave the previous Epic untouched.
 - For rc02 and later: exactly 2 children, both `Test Execution`, assigned as in Step 5a. Never substitute a different issue type if `Test Execution` is rejected — report instead.
 - Delegate Epic creation entirely to `create-ana-rc-validation-ticket`; never re-implement its steps.
 - If Epic creation fails, create no children and no Confluence row for that version.
