@@ -61,12 +61,12 @@ The QA team reporters are fixed — do not ask the user for these, and do not wi
 Use `searchJiraIssuesUsingJql` with `cloudId: tomtom.atlassian.net`:
 
 ```
-project = NAV AND issuetype = Bug AND reporter IN ("712020:1c9e3001-3ab7-410a-b27f-56bdaef3627a", "70121:06132251-8fb4-4c83-b36e-ed3991d620a6", "70121:c8bb703b-bf46-419e-9e84-4b9f89bd5d55") AND affectedVersion = "ana/0.12.0-dev" AND created >= "{start_date}" AND created < "{end_date}" ORDER BY reporter ASC, created ASC
+project = NAV AND issuetype = Bug AND reporter IN ("712020:1c9e3001-3ab7-410a-b27f-56bdaef3627a", "70121:06132251-8fb4-4c83-b36e-ed3991d620a6", "70121:c8bb703b-bf46-419e-9e84-4b9f89bd5d55") AND affectedVersion = "ana/0.14.0-dev" AND created >= "{start_date}" AND created < "{end_date}" ORDER BY reporter ASC, created ASC
 ```
 
 with `fields: ["summary", "reporter", "priority", "customfield_10140", "status", "environment", "description"]`.
 
-**Note on the affects-version bucket:** `ana/0.12.0-dev` is the current mainline dev bucket (a generic Jira version, distinct from RC-specific versions like `ana/0.11.0-rc09` or specific dev-numbered builds like `ana/0.12.0-dev259.ba0ee7dd`). When mainline moves past the 0.12.x series, update this to the new bucket (e.g. `ana/0.13.0-dev`) — check by searching `project = NAV AND affectedVersion ~ "ana/0."` sorted by version if the query above returns suspiciously few results for a recent week.
+**Note on the affects-version bucket:** `ana/0.14.0-dev` is the current mainline dev bucket (moved from `ana/0.12.0-dev` on 2026-10-23) (a generic Jira version, distinct from RC-specific versions like `ana/0.11.0-rc09` or specific dev-numbered builds like `ana/0.12.0-dev259.ba0ee7dd`). When mainline moves past the 0.14.x series, update this to the new bucket (e.g. `ana/0.15.0-dev`), including the comment heading in Step 6 — check by searching `project = NAV AND affectedVersion ~ "ana/0."` sorted by version if the query above returns suspiciously few results for a recent week.
 
 For each returned issue, record:
 
@@ -109,11 +109,11 @@ Merge these GOSDK issues into the same per-reporter groups as the Step 3 NAV iss
 
 If Step 3 and Step 3b **together** returned zero issues, report: "No bugs reported by the QA team (checked both NAV and GOSDK) during week {week_number}/{year}." and stop — skip the rest of this step and everything after.
 
-Apply this to every issue collected across Step 3 and Step 3b. The specific dev-numbered build a ticket was found on (e.g. `0.12.0-dev075.d09db400`) is **not** the same as the generic `affectedVersion` bucket (`ana/0.12.0-dev`) used to filter in Step 3 — it has to be pulled per-ticket from one of two places, in this order, using a version-pattern regex rather than fixed string-splitting (the `environment` field's format varies by reporter — e.g. `ANA/0.12.0-dev075.d09db400\n\nGoogle Automotive (Volvo)\n...` for one tester, `* App: 0.12.0-dev254.825da6a8 | NavSDK: ...` for another):
+Apply this to every issue collected across Step 3 and Step 3b. The specific dev-numbered build a ticket was found on (e.g. `0.12.0-dev075.d09db400`) is **not** the same as the generic `affectedVersion` bucket (`ana/0.14.0-dev`) used to filter in Step 3 — it has to be pulled per-ticket from one of two places, in this order, using a version-pattern regex rather than fixed string-splitting (the `environment` field's format varies by reporter — e.g. `ANA/0.12.0-dev075.d09db400\n\nGoogle Automotive (Volvo)\n...` for one tester, `* App: 0.12.0-dev254.825da6a8 | NavSDK: ...` for another):
 
 1. **Primary — the standard Jira `environment` field.** If non-empty, search it for the pattern `\d+\.\d+\.\d+(?:-(?:dev|rc)\d+(?:\.[0-9a-zA-Z]+)?)?` and take the first match (e.g. matches `0.12.0-dev075.d09db400` inside `ANA/0.12.0-dev075.d09db400`, and `0.12.0-dev254.825da6a8` inside `* App: 0.12.0-dev254.825da6a8 | NavSDK: 2.7.0-dev359...` — the regex's greediness plus the leftmost-match rule naturally picks the App version over the later NavSDK version).
 2. **Fallback — the description's Test Env block** (used by tickets created via the `create-nav-bug` skill, which leaves `environment` empty). Search the `description` for a `NavApp Version:` line (logcat-style Test Env) or an `App Version:` line (inline-style Test Env) and apply the same version-pattern regex to that line's value.
-3. If neither source yields a match, leave the App Version cell **blank** — do not guess or fall back to the generic `ana/0.12.0-dev` bucket string.
+3. If neither source yields a match, leave the App Version cell **blank** — do not guess or fall back to the generic `ana/0.14.0-dev` bucket string.
 
 Record this as `app_version` for each issue.
 
@@ -174,7 +174,7 @@ Skip this step if Step 3 and Step 3b together returned zero issues.
 Post one **combined** table covering all reporters and both projects (not split per reporter, not split by project) as a comment on `epic_key` (the same Epic found in Step 1), in this exact shape — modeled on [this example](https://tomtom.atlassian.net/browse/NAV-204837?focusedCommentId=12453001):
 
 ```
-**Bugs reported by QA this week (Week {week_number}, {start_date formatted as "Mon D"} - {end_date formatted as "Mon D"}) - ANA/0.12.0-dev builds only:**
+**Bugs reported by QA this week (Week {week_number}, {start_date formatted as "Mon D"} - {end_date formatted as "Mon D"}) - ANA/0.14.0-dev builds only:**
 
 | Ticket | App Version | Severity | Priority | Summary |
 | --- | --- | --- | --- | --- |
@@ -201,7 +201,7 @@ Post one **combined** table covering all reporters and both projects (not split 
 - Severity must come from `customfield_10140` on each issue, priority from the standard `priority` field — never conflate the two or infer one from the other.
 - The only write this skill performs is the single `addCommentToJiraIssue` call in Step 6, posting to the week's own Mainline validation Epic — never call `updateConfluencePage`, never comment on any other ticket, and never post more than once per run.
 - If the week's Epic can't be found, stop and ask the user to confirm the week/year instead of guessing a date range.
-- Do not hardcode a specific dev-numbered build (e.g. `ana/0.12.0-dev259.ba0ee7dd`) in the Step 3 JQL filter — always use the generic mainline dev bucket (`ana/0.12.0-dev`) there, updating the bucket name as mainline advances past its current minor version. The per-ticket specific dev build belongs only in the App Version column (Step 3a), never in the filter.
-- Never fall back to the generic `ana/0.12.0-dev` bucket string as a per-ticket App Version value — if Step 3a finds nothing, leave the cell blank.
+- Do not hardcode a specific dev-numbered build (e.g. `ana/0.12.0-dev259.ba0ee7dd`) in the Step 3 JQL filter — always use the generic mainline dev bucket (`ana/0.14.0-dev`) there, updating the bucket name as mainline advances past its current minor version. The per-ticket specific dev build belongs only in the App Version column (Step 3a), never in the filter.
+- Never fall back to the generic `ana/0.14.0-dev` bucket string as a per-ticket App Version value — if Step 3a finds nothing, leave the cell blank.
 - Step 3b deliberately has **no** `affectedVersion` filter — do not add one. Its entire purpose is to catch bugs that would be missed by a version filter (missing or non-standard Affects Version), so filtering on version there would defeat it.
 - Do not silently drop a Step 3b issue just because its Affects Version is missing or doesn't match the mainline-dev convention — include it and flag it (per Step 3b's rules) rather than excluding it.
