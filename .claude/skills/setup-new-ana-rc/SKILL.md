@@ -6,7 +6,7 @@ End-to-end setup for a **newly released ANA RC**. Detects new releases from Slac
 2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests, and **none while the previous RC's Epic is still Open/Funnel**, Step 5-pre2)
 3. Adds (or enriches) the version's row on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page, including the **build date/time** and the **owner tag** in each testing column
 4. For every release: sets the Epic's **Target end** to the build date + 5 working days (RC) or + 2 working days (final or patch release), and puts a **Planned, To be finished by {date}** line in the row's Comments cell. On every run, it also strikes that line through once the round's testing is Done (Step 6f).
-5. Adds the version's row to the [ANA RC Details](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/2551710615/ANA+RC+Details) Confluence page: build date/time and backported-fix count (Step 6g)
+5. Adds the version's row to the [ANA RC Details](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/2551710615/ANA+RC+Details) Confluence page: build date/time and backported-fix count (Step 6g), and fills in its issue count once the round's issues are on ANA Versions Tested (Step 6h)
 
 Designed to run **unattended on a schedule**. Every step is idempotent, so a repeat run on an already-processed version changes nothing.
 
@@ -503,7 +503,27 @@ Leave out sub-tasks titled `Risk Assessment (backport to …)`: they are not bac
 
 **Write:** `dryRun: true` first. Check that the `<tr>` count went up by exactly the number of rows added (plus one header row per new table), using the row-level diff from 6e. Then write with `minorEdit: true`, `versionMessage: Add ANA {versions} to RC Details`. Batch all versions into one write. On a version conflict: re-read, re-run the duplicate guard, retry once.
 
-**Not done by this step:** filling `Issues reported by team` later, the intro's "Last updated" date, the Notes, and the Maui release-timeline chart. These stay manual. Never edit or remove existing rows, headings, notes or the chart.
+**Not done by this step:** the "How to read this page" section, the Notes, and the Maui release-timeline chart. These stay manual. `Issues reported by team` is filled in later by 6h. Never edit or remove existing rows, headings, notes or the chart.
+
+### 6h — Fill in "Issues reported by team" on ANA RC Details (every run)
+
+The user asked for this on 2026-10-26: when a round's issues are added on ANA Versions Tested, copy the count across. **Run this on every run, even when Slack shows no new release**, like 6f. A round's issues are recorded days after its release.
+
+1. On the ANA RC Details page from 6g, find every row whose `Issues reported by team` cell is exactly `—`.
+2. For each one, find the version's row on ANA Versions Tested (the page from 6a, release-line tables only, never Mainline Validation) and read its **Comments** cell.
+3. Split the cell on `(?i)already reported` and use only the part before it, as the board skill does. Pre-existing issues re-observed on a build are not new issues.
+4. Work out the count from that part:
+   - **Severity counts present** (`N Critical`, `N Major`, `N Minor`, `N Safety`, `N Blocks Feature Rollout`, any case, with or without `(A)` or a space before the colon): add up the `N` values. Add one per key listed after `Also found:`, since those have no severity set. Don't count `Improvement:` keys. Use the counts as stated, even when they disagree with the number of keys listed.
+   - **`No new issues` or `No issues reported`**: write `0`.
+   - **Skipped, switched or combined** (e.g. `Skipped for rc11`, `switched to rc02`, `N/A: skipped`) with no counts: leave `—`.
+   - **Still planned** (only the `Planned, To be finished by` line, no counts): leave `—`. The round hasn't been tested yet.
+   - **Anything else**: leave `—` and report `issues cell not understood: {version}`.
+   - **No row on ANA Versions Tested**: leave `—`.
+5. `replaceNode` the cell's paragraph with `<p>{count}</p>`.
+
+- **Only fill cells that are exactly `—`.** A number already in the cell was put there by this step or by hand, so never overwrite it. If it differs from what step 4 would give, report `issues count differs from ANA Versions Tested: {version} ({page} vs {source})` and leave it alone.
+- **Batch** the fills into the same write as any 6g rows, with the same dryRun and `<tr>` count check (6h adds no rows). Use `versionMessage: Update ANA RC Details` when there are no new rows.
+- **Nothing to fill and no new rows:** make no write at all.
 
 ---
 
@@ -525,6 +545,7 @@ Leave out sub-tasks titled `Risk Assessment (backport to …)`: they are not bac
 📅 Target end set: {epic_key} → {date} ({version})   (or "kept existing {date}")
 ✂️ Planned line struck through (testing Done): {version}, ...
 📋 ANA RC Details: row added for {version} (Created {build_datetime}, Backported fixes {n})   (or "row already present")
+📋 ANA RC Details: issues filled in for {version} ({count}), …   (omit if none)
 ✋ Planned line edited by hand, not struck (strike it manually): {version}, ...
 ⚠  No planned line: {version} ({reason: no Target end / edit rejected / no build time})
 ⚠  No section for release line {release_line} — nothing written for {version}
@@ -576,7 +597,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Step 6f runs on **every** run, even with no new release. It strikes through only this skill's own `Planned, To be finished by` line, and only once testing is Done (the Epic Done, or all its children Done).
 - **Never overwrite a manual change on the page.** A planned line edited by hand is never struck or rewritten. A cell that already holds a plan in any wording gets no second line. Any date someone typed on the page wins over the Epic's (6d, 6f).
 - Never add a second row for a version that already has one — enrich the existing row.
-- On **ANA RC Details** (2551710615), only add rows, plus a new line section when one doesn't exist yet. Never change an existing row, the notes, the intro or the release-timeline chart (Step 6g).
+- On **ANA RC Details** (2551710615), only add rows, plus a new line section when one doesn't exist yet, and fill `Issues reported by team` cells that read `—` (Step 6h). Never change any other cell of an existing row, the notes, the "How to read this page" section or the release-timeline chart (Step 6g).
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.
 - Never create a release-line section that doesn't exist — report and stop for that version.
 - Always `dryRun` the Confluence update and verify it **by comparing extracted `<tr>` lists**, never a character diff — the server regenerates every `data-local-id` on write (Step 6e).
