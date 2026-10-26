@@ -6,6 +6,7 @@ End-to-end setup for a **newly released ANA RC**. Detects new releases from Slac
 2. Creates **2 child work items** under that Epic — desk sanity and APAC sanity (**none for rc01**, which is regression-tested by hand-planned area tests, and **none while the previous RC's Epic is still Open/Funnel**, Step 5-pre2)
 3. Adds (or enriches) the version's row on the [ANA Versions Tested](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/1448476996/ANA+Versions+Tested) Confluence page, including the **build date/time** and the **owner tag** in each testing column
 4. For every release: sets the Epic's **Target end** to the build date + 5 working days (RC) or + 2 working days (final or patch release), and puts a **Planned, To be finished by {date}** line in the row's Comments cell. On every run, it also strikes that line through once the round's testing is Done (Step 6f).
+5. Adds the version's row to the [ANA RC Details](https://tomtom.atlassian.net/wiki/spaces/ANA/pages/2551710615/ANA+RC+Details) Confluence page: build date/time and backported-fix count (Step 6g)
 
 Designed to run **unattended on a schedule**. Every step is idempotent, so a repeat run on an already-processed version changes nothing.
 
@@ -455,6 +456,55 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
 - **Batch:** put every strike in the same write as any row edits from this run, with the same dryRun and `<tr>` list check. Exactly the struck rows may differ.
 - **Nothing to strike and no new release:** make no write at all.
 
+### 6g — Add the row to ANA RC Details
+
+The user asked for this on 2026-10-26: the page was kept up to date by hand and fell behind. For each version this run set up (or found already set up, Step 3), add its row to **ANA RC Details** (page `2551710615`).
+
+**Fetch:** `getConfluenceContent`, `content_id: 2551710615`, `content_format: html`, `detail: full`. Keep the `snapshotToken`. `metadata.hasSpaceInstructions` is false, so don't call `getConfluenceSpace`.
+
+**Layout:** one `<h2>` per release line, reading `{line} RC` (e.g. `0.12 RC`), followed by its table, then a `<h2>Notes</h2>` section at the end. Each table has 4 columns:
+
+```
+ANA version | Created (build date & time) | Backported fixes | Issues reported by team
+```
+
+A release-line table is the first `<table>` after its `<h2>`. Find it by its own `<table> … </table>` span (as in 6b), not by slicing to the next heading.
+
+**Duplicate guard:** if any row's first cell, with markup stripped, already reads `{version}` or `{version} (final)`, leave that row exactly as it is, even if cells are `—`. Never add a second row, and never overwrite a cell.
+
+**Cell contents for a new row:**
+
+| Column | Content |
+|---|---|
+| ANA version | `{version}`. A final release `X.Y.0` is written `<strong>X.Y.0 (final)</strong>` |
+| Created | `{DD Mon YYYY}, {h:mm AM/PM}` in Europe/Amsterdam from the Slack `ts` (Step 2c), e.g. `26 Oct 2026, 10:17 AM`. Add ` *` when the notification was `SdkVer Release (ANA)`, not the legacy `ANA release … success` (the 0.13 note explains the `*`). No build time → `—` |
+| Backported fixes | see below |
+| Issues reported by team | `—`. The round hasn't been tested yet |
+
+**Backported fixes:** count the backport work items carrying the version's fixVersion:
+
+```
+project = NAV AND fixVersion = "ana/{version}" AND issuetype = Sub-task
+AND (summary ~ "Fix on a hardened branch" OR summary ~ "Backport") ORDER BY key ASC
+```
+
+Leave out sub-tasks titled `Risk Assessment (backport to …)`: they are not backports (page Notes). The cell is the count as a plain number, e.g. `3`.
+
+**rc01 and final releases (`X.Y.0`) are composite rows**, because they carry the whole development cycle: `<strong>{total}</strong> ({bugs} bugs + {backports} backport)`.
+- `total` is every issue with that fixVersion (`fixVersion = "ana/{version}"`, count only).
+- `bugs` is the same query with `AND issuetype = Bug`.
+- `backports` is the count above.
+
+**No fixVersion in Jira:** write `—` and report it.
+
+**Placement:** `insertNodeAfter` on the table's last `<tr>` `data-local-id`, so the row lands at the bottom of its line. Rows are in release order and new releases are always the newest. Omit `data-local-id` on new nodes.
+
+**A new release line** (no `<h2>{line} RC</h2>` yet, e.g. the first 0.14 RC): add the heading and a table with the same 4 header cells, with `insertNodeBefore` on the `Notes` `<h2>`, so line sections stay above the notes and in order. Then add the row to it.
+
+**Write:** `dryRun: true` first. Check that the `<tr>` count went up by exactly the number of rows added (plus one header row per new table), using the row-level diff from 6e. Then write with `minorEdit: true`, `versionMessage: Add ANA {versions} to RC Details`. Batch all versions into one write. On a version conflict: re-read, re-run the duplicate guard, retry once.
+
+**Not done by this step:** filling `Issues reported by team` later, the intro's "Last updated" date, the Notes, and the Maui release-timeline chart. These stay manual. Never edit or remove existing rows, headings, notes or the chart.
+
 ---
 
 ## Step 7 — Report
@@ -474,6 +524,7 @@ The checks: when **enriching**, the row count must be **unchanged** and exactly 
 ⚠  Cells left untouched because they were already filled: {column}, ... for {version}
 📅 Target end set: {epic_key} → {date} ({version})   (or "kept existing {date}")
 ✂️ Planned line struck through (testing Done): {version}, ...
+📋 ANA RC Details: row added for {version} (Created {build_datetime}, Backported fixes {n})   (or "row already present")
 ✋ Planned line edited by hand, not struck (strike it manually): {version}, ...
 ⚠  No planned line: {version} ({reason: no Target end / edit rejected / no build time})
 ⚠  No section for release line {release_line} — nothing written for {version}
@@ -525,6 +576,7 @@ Because this skill creates Jira issues and edits a shared Confluence page, a sch
 - Step 6f runs on **every** run, even with no new release. It strikes through only this skill's own `Planned, To be finished by` line, and only once testing is Done (the Epic Done, or all its children Done).
 - **Never overwrite a manual change on the page.** A planned line edited by hand is never struck or rewritten. A cell that already holds a plan in any wording gets no second line. Any date someone typed on the page wins over the Epic's (6d, 6f).
 - Never add a second row for a version that already has one — enrich the existing row.
+- On **ANA RC Details** (2551710615), only add rows, plus a new line section when one doesn't exist yet. Never change an existing row, the notes, the intro or the release-timeline chart (Step 6g).
 - Never touch the **Mainline Validation** tables or the final `Releases :` / `NavSDK Mapping` table.
 - Never create a release-line section that doesn't exist — report and stop for that version.
 - Always `dryRun` the Confluence update and verify it **by comparing extracted `<tr>` lists**, never a character diff — the server regenerates every `data-local-id` on write (Step 6e).
