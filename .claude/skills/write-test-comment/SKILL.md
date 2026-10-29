@@ -4,7 +4,8 @@ description: >
   Adds a structured test-summary comment to a given ANA RC validation Epic in Jira NAV. Trigger:
   the user says something like "write my test comment" or "write my Test comment" and gives an
   Epic link or key. Pulls the build details (App/NavSDK version) straight from the Epic, adds a
-  fixed Tested checklist (Sanity tests, Backported fixes, ANA + VIL scenario), queries every NAV
+  fixed Tested checklist (Sanity tests, Backported fixes, ANA scenario — "ANA + VIL scenario" for
+  0.10 and older), queries every NAV
   bug the user personally reported against that RC's Affects Version and lists each with its
   Priority and Severity under "Issues Reported", and appends a blank "Go/No-Go Recommendation"
   line for the user to fill in by hand. Posts the comment directly on the Epic — no draft/confirm
@@ -104,7 +105,7 @@ Build Details : App {navapp_version} | NavSDK {navsdk_version}
 Tested :
 1. Sanity tests : Done
 2. Backported fixes : Done
-3. ANA + VIL scenario : Done
+3. {ana_line} : Done
 
 Issues Reported :
 {one bullet per issue, in the form below — or the literal line "No issues reported" if Step 3 found none}
@@ -119,6 +120,8 @@ Each issue bullet:
 ```
 
 Use a markdown `[text](url)` link with the **summary included as plain text** in the bullet itself — do not rely on a bare URL to auto-unfurl into a smart-link card. A bare URL posted via `addCommentToJiraIssue` is **not** clickable and does **not** unfurl (confirmed: it renders as inert plain text), so the summary must be written out explicitly, and the key must be wrapped in a real markdown link to be clickable at all.
+
+`{ana_line}` is `ANA scenario` when the release line of `navapp_version` is **0.11 or later** (the major is above 0, or the major is 0 and the minor is 11 or more), and `ANA + VIL scenario` for 0.10 and older. The user asked for this on 2026-10-29, to match the Epic description, which drops the VilTestApp from 0.11 on.
 
 The three "Tested" lines are always exactly this fixed wording and order — do not reword, reorder, or add/remove items regardless of what was actually tested. If the user later says a specific item was *not* done, that's a manual edit to the posted comment, not something this skill infers.
 

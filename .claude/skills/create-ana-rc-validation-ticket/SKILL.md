@@ -113,6 +113,12 @@ Construct the following URLs and store them for use in the description:
 | `known_issues_url` | `https://tomtom.atlassian.net/jira/dashboards/37545` (always fixed) |
 | `bd_scan_url` | `https://hub.tomtomgroup.com/api/projects/63b17d4d-b948-4b52-bab8-18d2fe780acc/versions?limit=100&offset=0` (always fixed) |
 
+**VIL from 0.11 on.** The user asked for this on 2026-10-29: set `drop_vil = true` when the release line of `navapp_version` is **0.11 or later**, meaning the major version is above 0, or the major is 0 and the minor is 11 or more (`0.11.x`, `0.12.x`, `0.13.x`, …). For 0.10 and older, `drop_vil = false`. When `drop_vil = true`, the Step 5 description:
+- leaves out item 4 (`VilTestApp : …`) of the first section. `viltestapp_url` isn't used.
+- says `ANA`, not `ANA + VIL`, as item 2 of **Testing scope**.
+
+This applies to both the normal and the first-RC description. Nothing else in the description changes.
+
 ---
 
 ## Step 2 — Fetch NavApp fix tickets from the release version
@@ -255,16 +261,18 @@ All URLs must be written as markdown hyperlinks using `[label](url)` syntax — 
 - BD scan: use `BD scan link` as label
 - Known issues: use `Known issues dashboard` as label
 
+The `←` notes in the templates below are instructions for you, not description text. Never copy them into the Epic.
+
 ```
 The testing should be performed from the RC Branch:
     1    ANA reference app : [app-gosdk-{navapp_version}.apk]({gosdk_url})
     2    NavSDK : {navsdk_version}
     3    ANA app : [app-ana-{navapp_version}.apk]({ana_url})
-    4    VilTestApp : [vilTestApp-{navapp_version}.apk]({viltestapp_url})
+    4    VilTestApp : [vilTestApp-{navapp_version}.apk]({viltestapp_url})      ← only when drop_vil = false; leave this line out from 0.11 on
 
 Testing scope:
     1    Sanity test
-    2    ANA + VIL
+    2    ANA + VIL        ← when drop_vil = true (0.11 and later), write just: ANA
     3    Drive test
 
 NavSDK combinations:
@@ -293,11 +301,11 @@ The testing should be performed from the RC Branch:
     1    ANA reference app : [app-gosdk-{navapp_version}.apk]({gosdk_url})
     2    NavSDK : {navsdk_version}
     3    ANA app : [app-ana-{navapp_version}.apk]({ana_url})
-    4    VilTestApp : [vilTestApp-{navapp_version}.apk]({viltestapp_url})
+    4    VilTestApp : [vilTestApp-{navapp_version}.apk]({viltestapp_url})      ← only when drop_vil = false; leave this line out from 0.11 on
 
 Testing scope:
     1    Regression Test
-    2    ANA + VIL
+    2    ANA + VIL        ← when drop_vil = true (0.11 and later), write just: ANA
     3    Drive test
 
 NavSDK combinations:
