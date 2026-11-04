@@ -141,11 +141,7 @@ The layout is fixed: statuses are the **columns**, and All / APAC / ROW are the 
 
 Swap out the existing summary heading, table and note for the new ones, keeping their position at the top. If there is no summary yet, insert one before the first node of the body. Change nothing else above the feature table.
 
-Right after the note there is a link paragraph, **🔄 Refresh this page (Run now)**, that points to the routine `https://claude.ai/code/routines/trig_01Uz88qziF8G2VtfDSDphG2Y` ("ANA Alpha/Beta features refresh", which runs this skill). Never remove or change it. If it is missing, add it back after the note:
-
-```html
-<p><a href="https://claude.ai/code/routines/trig_01Uz88qziF8G2VtfDSDphG2Y"><strong>🔄 Refresh this page (Run now)</strong></a> <em>Opens the refresh routine in claude.ai: click Run now. Works only for Ashwini.</em></p>
-```
+Do not add a refresh link or button to the page. The user had one removed on 2026-11-04.
 
 Before publishing, check that each Total equals the sum of its row, and that All's Total equals the number of feature rows.
 
