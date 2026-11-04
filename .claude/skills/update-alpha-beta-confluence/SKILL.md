@@ -64,7 +64,7 @@ Now sort the work into three buckets (A and B from Slack, C from the page itself
 
 **Bucket C — Product backfill**: every ticket in no_product_tickets (Step 1). These rows get only their Product cell filled.
 
-If all three buckets are empty, tell the user "No new features or updates since last update" and stop.
+If all three buckets are empty, don't change the feature table, but still refresh the Testing summary (Step 5a): people edit Status and Comments by hand between runs. Tell the user "No new features or updates since last update" and give the new counts.
 
 ---
 
@@ -114,6 +114,35 @@ Use `updateConfluencePage` with:
 - `title`: `ANA Alpha/Beta features`, always exactly this. Never add a date or `WIP`. The user asked for this on 2026-11-04: the title is part of the page URL, so a dated title changed the link on every update and broke links people had shared.
 - `body`: full HTML table with all rows
 
+### Step 5a — Refresh the Testing summary table on top
+
+The page starts with a `Testing summary` heading, a summary table and a one-line note, above the "As of …" paragraph and the feature table. The user asked on 2026-11-04 for this table to stay on top and be recounted on every refresh.
+
+Count every row of the feature table **after** this run's changes, putting each row in exactly one status, checked in this order:
+
+| Status | Rule |
+|---|---|
+| Tested ✅ | Status cell contains `✅` |
+| In progress (⏳ / Pending) | Status cell contains `⏳` or `Pending` |
+| Not applicable (N/A, UX Lib, generic) | Comments starts with `N/A`, `Generic change`, `UX related`, `Already covered`, `This is just related` or `No testcase added since` (case-insensitive) |
+| To be tested | Test case, Comments and Status are all blank |
+| Status not set (notes, no ✅) | anything else |
+
+Count each status for **All** rows, for rows with APAC = `Yes`, and for rows with ROW = `Yes`. Then add a Total for each.
+
+The layout is fixed: statuses are the **columns**, and All / APAC / ROW are the **rows**. The user asked for this orientation. Use this HTML, with the To be tested and Total numbers in bold:
+
+```html
+<h3>Testing summary</h3><table><thead><tr><th><p><strong></strong></p></th><th><p><strong>To be tested</strong></p></th><th><p><strong>In progress (⏳ / Pending)</strong></p></th><th><p><strong>Status not set (notes, no ✅)</strong></p></th><th><p><strong>Tested ✅</strong></p></th><th><p><strong>Not applicable (N/A, UX Lib, generic)</strong></p></th><th><p><strong>Total</strong></p></th></tr></thead><tbody>
+<tr><td><p><strong>All</strong></p></td><td><p><strong>{todo}</strong></p></td><td><p>{inprog}</p></td><td><p>{nostatus}</p></td><td><p>{tested}</p></td><td><p>{na}</p></td><td><p><strong>{total}</strong></p></td></tr>
+<!-- same row for APAC, then ROW -->
+</tbody></table><p><em>Counted from the table below on </em><time datetime="{YYYY-MM-DD}">{Month D, YYYY}</time><em>. "To be tested" = Test case, Comments and Status all blank.</em></p>
+```
+
+Swap out the existing summary heading, table and note for the new ones, keeping their position at the top. If there is no summary yet, insert one before the first node of the body. Change nothing else above the feature table.
+
+Before publishing, check that each Total equals the sum of its row, and that All's Total equals the number of feature rows.
+
 ### Table column structure (preserve existing widths)
 
 | Column | Notes |
@@ -156,3 +185,4 @@ Tell the user:
 - How many existing rows got their Product filled in (Bucket C), and which tickets have no Products value in Jira
 - How many were skipped (already fully up to date or in Test Debt)
 - Which tickets had APAC or ROW set to Yes
+- The refreshed Testing summary counts (All / APAC / ROW), and the APAC tickets still To be tested
