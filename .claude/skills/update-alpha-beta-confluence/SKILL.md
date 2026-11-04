@@ -29,13 +29,15 @@ Use `getConfluencePage` with `pageId: 2100726927`, `cloudId: tomtom.atlassian.ne
 
 For each existing row in the table, extract:
 - **ticket_key**: the NAV key from the Feature column
+- **product**: current value of the Product cell (may be blank)
 - **in_alpha**: current value of the In Alpha cell (may be blank)
 - **in_beta**: current value of the In Beta cell (may be blank)
 - **all other cell values**: APAC, ROW, Test case, Comments, Status — preserve exactly as-is
 
-Build two sets:
+Build three sets:
 - **existing_tickets**: all ticket keys currently on the page
 - **alpha_only_tickets**: ticket keys where In Alpha has a date but In Beta is blank
+- **no_product_tickets**: ticket keys whose Product cell is blank
 
 ---
 
@@ -54,19 +56,23 @@ For each qualifying message, extract:
 
 If the same ticket appears in both channels, merge into one row with both dates filled.
 
-Now split the Slack results into two buckets:
+Now sort the work into three buckets (A and B from Slack, C from the page itself):
 
 **Bucket A — Truly new tickets**: ticket_key is NOT in existing_tickets at all. These become new rows.
 
 **Bucket B — Beta upgrades**: ticket_key IS in alpha_only_tickets AND the Slack Beta channel has a beta_date for it. These rows already exist on the page but need their In Beta cell filled in.
 
-If both buckets are empty, tell the user "No new features or updates since last update" and stop.
+**Bucket C — Product backfill**: every ticket in no_product_tickets (Step 1). These rows get only their Product cell filled.
+
+If all three buckets are empty, tell the user "No new features or updates since last update" and stop.
 
 ---
 
-## Step 3 — Fetch ticket summaries from Jira
+## Step 3 — Fetch ticket summaries and products from Jira
 
-For each unique ticket key collected in Step 1, use `getJiraIssue` with `cloudId: tomtom.atlassian.net` and fields `["summary"]`.
+For every ticket in Buckets A, B and C, fetch `summary` and `customfield_10309` (**Products**). Use one `searchJiraIssuesUsingJql` call with `key in (...)` (batches of up to 50) rather than one `getJiraIssue` per ticket.
+
+**Product:** join the `value` of every entry in `customfield_10309`, in the order Jira returns them, with `, ` — e.g. `ANA`, `UX Library`, `Automotive UI on NavSDK`, `ANA, Automotive UI on NavSDK`. If the field is empty, leave the cell blank. Never guess the product from the summary (e.g. `[appUxLib]`). The user asked for this column on 2026-11-04.
 
 From the summary, determine:
 
@@ -91,8 +97,12 @@ Remove any ticket from your feature list that appears in the Test Debt page. The
 
 Reconstruct the full table as follows:
 
-1. **New rows** (Bucket A): build fresh rows for each new ticket. Sort newest first. Insert at the **top** of the table body.
-2. **Existing rows**: copy them from the current page HTML exactly, with one exception — for any row in **Bucket B**, fill in the In Beta cell with the beta_date from Slack. All other cells (APAC, ROW, Test case, Comments, Status) stay untouched.
+1. **New rows** (Bucket A): build fresh rows for each new ticket, with the Product from Step 3. Sort newest first. Insert at the **top** of the table body.
+2. **Existing rows**: copy them from the current page HTML exactly, with two exceptions:
+   - **Bucket B:** fill in the In Beta cell with the beta_date from Slack.
+   - **Bucket C:** fill in the blank Product cell with the Product from Step 3.
+
+   All other cells (APAC, ROW, Test case, Comments, Status) stay untouched. **Never overwrite a Product cell that already has a value**, even if Jira now says something else: someone may have set it by hand.
 
 The result is the complete table: new rows on top, existing rows below with any beta upgrades applied.
 
@@ -101,7 +111,7 @@ Use `updateConfluencePage` with:
 - `pageId`: `2100726927`
 - `status`: `current` (always publish, not draft)
 - `contentFormat`: `html`
-- `title`: `ANA Alpha/Beta features (As of {today DD Month YYYY}) WIP`
+- `title`: `ANA Alpha/Beta features`, always exactly this. Never add a date or `WIP`. The user asked for this on 2026-11-04: the title is part of the page URL, so a dated title changed the link on every update and broke links people had shared.
 - `body`: full HTML table with all rows
 
 ### Table column structure (preserve existing widths)
@@ -109,6 +119,7 @@ Use `updateConfluencePage` with:
 | Column | Notes |
 |---|---|
 | Feature | Ticket URL as inline smart link (`data-card-appearance="inline"`) |
+| Product | Products (`customfield_10309`) values from the ticket, joined with `, `; blank if unset. Fill only when blank |
 | In Alpha | Date e.g. `15 Jun` — blank if not in Alpha channel |
 | In Beta | Date e.g. `26 Jun` — blank if not in Beta channel |
 | APAC | `Yes` if JP or KR in summary, else blank |
@@ -122,6 +133,7 @@ Use `updateConfluencePage` with:
 ```html
 <tr>
   <td data-colwidth="{w}"><p><a href="https://tomtom.atlassian.net/browse/{KEY}" data-card-appearance="inline">https://tomtom.atlassian.net/browse/{KEY}</a></p></td>
+  <td data-colwidth="{w}"><p>{product or empty}</p></td>
   <td data-colwidth="{w}"><p>{alpha_date or empty}</p></td>
   <td data-colwidth="{w}"><p>{beta_date or empty}</p></td>
   <td data-colwidth="{w}"><p>{APAC: Yes or empty}</p></td>
@@ -141,5 +153,6 @@ Use the colwidths from the live page structure (Step 4), not hardcoded values.
 Tell the user:
 - How many new features were added (Bucket A)
 - How many existing rows were updated with a Beta date (Bucket B)
+- How many existing rows got their Product filled in (Bucket C), and which tickets have no Products value in Jira
 - How many were skipped (already fully up to date or in Test Debt)
 - Which tickets had APAC or ROW set to Yes
