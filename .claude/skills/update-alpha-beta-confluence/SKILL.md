@@ -141,6 +141,8 @@ The layout is fixed: statuses are the **columns**, and All / APAC / ROW are the 
 
 Swap out the existing summary heading, table and note for the new ones, keeping their position at the top. If there is no summary yet, insert one before the first node of the body. Change nothing else above the feature table.
 
+Between the summary note and the feature table there is a **How to read this page** section (heading, intro, column list, summary definitions, update note). The user asked for it on 2026-11-18. The user and others edit it by hand, so keep it exactly as it is on the page, never restore an earlier wording. If you change a column, a status rule or what a refresh does, update the matching line in that section too.
+
 Do not add a refresh link or button to the page. The user had one removed on 2026-11-04.
 
 Before publishing, check that each Total equals the sum of its row, and that All's Total equals the number of feature rows.
