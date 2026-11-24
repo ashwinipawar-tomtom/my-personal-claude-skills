@@ -125,7 +125,7 @@ Row matched: {release_version} in the ANA Versions Tested table
 **Severity count rules:**
 - List each severity group on a line or separated by `|`
 - The count number MUST match the number of ticket keys listed — always verify before outputting
-- Include ticket keys as markdown hyperlinks next to each count (e.g. `2 Critical/Blocker: [NAV-199938](https://tomtom.atlassian.net/browse/NAV-199938), [NAV-202308](https://tomtom.atlassian.net/browse/NAV-202308)`)
+- **Always give the Suggested Comments cell content as raw Markdown, inside a fenced code block** so it can be copied as-is (the user asked for this on 2026-11-17). Bold with `**…**`, links as `[KEY](url)`, each severity group on its own line, e.g. `**2 Critical/Blocker:** [NAV-199938](https://tomtom.atlassian.net/browse/NAV-199938), [NAV-202308](https://tomtom.atlassian.net/browse/NAV-202308)`. Do not use wiki markup (`*bold*`, `[KEY|url]`). The user rejected that.
 - Omit a severity level entirely if count is zero
 - **Use severity labels from QA comments first, falling back to the ticket's own `customfield_10140` (Severity) field per Step 2d** — never use Jira priority (High/Medium/Low) as a substitute for severity, in comments or on the ticket
 - If a ticket has no severity label in comments AND no value in `customfield_10140`, list it at the end without any label, e.g. `Also found: NAV-XXXXX, NAV-YYYYY`
